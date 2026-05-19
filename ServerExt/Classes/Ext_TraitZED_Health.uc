@@ -23,9 +23,15 @@ var array<float> HPList;
 static function ApplyEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level, optional Ext_TraitDataStore Data)
 {
 	local Ext_T_ZEDHelper H;
+	local int ScaleIndex;
+
+	if (Level <= 0 || Default.HPList.Length == 0)
+		return;
+
+	ScaleIndex = Min(Level - 1, Default.HPList.Length - 1);
 
 	foreach Player.ChildActors(class'Ext_T_ZEDHelper',H)
-		H.SetHealthScale(Default.HPList[Level-1]);
+		H.SetHealthScale(Default.HPList[ScaleIndex]);
 }
 
 static function CancelEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level, optional Ext_TraitDataStore Data)

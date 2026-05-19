@@ -1,0 +1,13 @@
+[h1]V2.0.6[/h1]
+
+[list]
+[*]Reworked the Zvampext admin settings dashboard into grouped modules for [b]Restrictions[/b], [b]Trader[/b], [b]Server[/b], [b]Tools[/b], and [b]Wave[/b].
+[*]Added a [b]Resource Limits[/b] popup for grenade and pickup override controls.
+[*]Moved grenade damage, grenade radius, ammo pickup, item pickup, and armor pickup controls out of the main dashboard into the new popup for cleaner spacing.
+[*]Improved admin dashboard button sizing and alignment across Server, Tools, Trader, and Wave controls.
+[*]Added a shared admin debug grid button for layout tuning across the V2 UI.
+[*]Improved the V2 admin dashboard visual framing and module borders.
+[*]Added admin dashboard access for recurring auto messages.
+[*]Added admin dashboard access for MOTD editing and broadcasting.
+[*]Added admin dashboard controls for trader pause, public trader opening, wave jump, end wave, spawn pause, max monster tuning, spawn speed tuning, God, ImRich, and save stats.
+[/list]

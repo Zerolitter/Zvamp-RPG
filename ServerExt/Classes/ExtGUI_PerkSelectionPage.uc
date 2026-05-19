@@ -72,5 +72,5 @@ defaultproperties
 	YSize=0.73
 
 	Pages.Empty
-	Pages.Add(Class'UIP_PerkSelectionLobby')
+	Pages.Add(Class'UIP_SpawnedPerkRebuild')
 }

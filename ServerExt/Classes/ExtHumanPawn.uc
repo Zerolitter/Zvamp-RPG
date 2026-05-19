@@ -24,7 +24,7 @@ var SkeletalMeshComponent FPBodyMesh;
 var repnotify class<KFWeapon> BackpackWeaponClass;
 var KFWeapon PlayerOldWeapon;
 
-var transient float NextRedeemTimer,BHopSpeedMod;
+var transient float NextRedeemTimer,BHopSpeedMod,ZvampextTraderSpeedBoostMod;
 var float KnockbackResist,NoRagdollChance;
 var AnimSet WakeUpAnimSet;
 var name FeignRecoverAnim;
@@ -46,6 +46,17 @@ replication
 
 function TakeDamage(int Damage, Controller InstigatedBy, vector HitLocation, vector Momentum, class<DamageType> DamageType, optional TraceHitInfo HitInfo, optional Actor DamageCauser)
 {
+	local ExtPlayerController EPC;
+
+	if (WorldInfo.NetMode != NM_Client)
+	{
+		EPC = ExtPlayerController(Controller);
+		if (EPC != None && EPC.bRevampGodMode)
+		{
+			Health = Max(Health, 1);
+			return;
+		}
+	}
 	if (KnockbackResist<1)
 		Momentum *= KnockbackResist;
 	Super.TakeDamage(Damage,InstigatedBy,HitLocation,Momentum,DamageType,HitInfo,DamageCauser);
@@ -54,9 +65,26 @@ function TakeDamage(int Damage, Controller InstigatedBy, vector HitLocation, vec
 simulated function bool Died(Controller Killer, class<DamageType> damageType, vector HitLocation)
 {
 	local ExtPlayerController C;
+	local ExtPlayerController EPC;
 	local class<Pawn> KillerPawn;
 	local PlayerReplicationInfo KillerPRI;
 	local SeqAct_Latent Action;
+
+	if (WorldInfo.NetMode != NM_Client)
+	{
+		EPC = ExtPlayerController(Controller);
+		if (EPC != None && EPC.bRevampGodMode)
+		{
+			Health = Max(Health, 1);
+			return false;
+		}
+		if (EPC != None && EPC.ActivePerkManager != None && EPC.ActivePerkManager.CurrentPerk != None
+			&& EPC.ActivePerkManager.CurrentPerk.PreventDeath(self, Killer, damageType))
+		{
+			Health = Max(Health, 1);
+			return false;
+		}
+	}
 
 	if (WorldInfo.NetMode!=NM_Client && PlayerReplicationInfo!=None)
 	{
@@ -141,15 +169,18 @@ event bool HealDamage(int Amount, Controller Healer, class<DamageType> DamageTyp
 	local Ext_PerkBase InstigatorExtPerk;
 
 	InstigatorPC = ExtPlayerController(Healer);
-	InstigatorPerk = InstigatorPC.GetPerk();
+	if (InstigatorPC!=None)
+		InstigatorPerk = InstigatorPC.GetPerk();
 
 	if (InstigatorPerk != None && bCanRepairArmor)
-		bRepairedArmor = InstigatorPC.GetPerk().RepairArmor(self);
+		bRepairedArmor = InstigatorPerk.RepairArmor(self);
 
-	EPRI = ExtPlayerReplicationInfo(InstigatorPC.PlayerReplicationInfo);
+	if (InstigatorPC!=None)
+		EPRI = ExtPlayerReplicationInfo(InstigatorPC.PlayerReplicationInfo);
 	if (EPRI != none)
 	{
-		InstigatorExtPerk = ExtPlayerController(Controller).ActivePerkManager.CurrentPerk;
+		if (InstigatorPC.ActivePerkManager!=None)
+			InstigatorExtPerk = InstigatorPC.ActivePerkManager.CurrentPerk;
 		if (InstigatorExtPerk != none && Ext_PerkFieldMedic(InstigatorExtPerk) != none)
 		{
 			if (Ext_PerkFieldMedic(InstigatorExtPerk).bHealingBoost)
@@ -372,6 +403,24 @@ function UpdateGroundSpeed()
 		GetPerk().ModifySpeed(GroundSpeed);
 		GetPerk().ModifySpeed(SprintSpeed);
 	}
+
+	if (ZvampextTraderSpeedBoostMod > 1.f)
+	{
+		GroundSpeed *= ZvampextTraderSpeedBoostMod;
+		SprintSpeed *= ZvampextTraderSpeedBoostMod;
+	}
+}
+
+function SetZvampextTraderSpeedBoost(float SpeedBoostMod)
+{
+	SpeedBoostMod = FMax(SpeedBoostMod, 1.f);
+	if (ZvampextTraderSpeedBoostMod == SpeedBoostMod)
+	{
+		return;
+	}
+
+	ZvampextTraderSpeedBoostMod = SpeedBoostMod;
+	UpdateGroundSpeed();
 }
 
 reliable server function NotifyHasStopped()
@@ -1365,7 +1414,7 @@ defaultproperties
 	// DefaultInventory.Add(class'KFWeap_Pistol_9mm')
 	DefaultInventory.Add(class'KFWeap_Healer_Syringe')
 	DefaultInventory.Add(class'KFWeap_Welder')
-	DefaultInventory.Add(class'KFInventory_Money')
+	DefaultInventory.Add(class'ExtInventory_Money')
 
 	Begin Object Class=SkeletalMeshComponent Name=FP_BodyComp
 		MinDistFactorForKinematicUpdate=0.0

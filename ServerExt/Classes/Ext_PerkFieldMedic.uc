@@ -47,7 +47,7 @@ simulated function ModifyDamageGiven(out int InDamage, optional Actor DamageCaus
 simulated function ModifyMagSizeAndNumber(KFWeapon KFW, out int MagazineCapacity, optional array< Class<KFPerk> > WeaponPerkClass, optional bool bSecondary=false, optional name WeaponClassname)
 {
 	if (MagazineCapacity>2 && (KFW==None ? WeaponPerkClass.Find(BasePerk)>=0 : IsWeaponOnPerk(KFW))) // Skip boomstick for this.
-		MagazineCapacity = Min(MagazineCapacity*Modifiers[10], bSecondary ? 150 : 255);
+		MagazineCapacity = Min(MagazineCapacity*Modifiers[10], bSecondary ? 150 : 2000);
 }
 
 function bool RepairArmor(Pawn HealTarget)
@@ -249,14 +249,14 @@ defaultproperties
 	DefPerkStats(20)=(bHiddenConfig=false) // Heal recharge
 
 	PrimaryMelee=class'KFWeap_Knife_FieldMedic'
-	PrimaryWeapon=None
+	PrimaryWeapon=class'KFWeap_Pistol_Medic'
 	PerkGrenade=class'KFProj_MedicGrenade'
 	SuperGrenade=class'ExtProj_SUPERMedGrenade'
 	SecondaryWeaponDef=class'ExtWeapDef_MedicPistol'
 
-	PrimaryWeaponDef=None
+	PrimaryWeaponDef=class'KFWeapDef_MedicPistol'
 	KnifeWeaponDef=class'KFWeapDef_Knife_Medic'
 	GrenadeWeaponDef=class'KFWeapDef_Grenade_Medic'
 
-	AutoBuyLoadOutPath=(class'KFWeapDef_MedicSMG', class'KFWeapDef_MedicShotgun', class'KFWeapDef_MedicRifle')
+	AutoBuyLoadOutPath=(class'KFWeapDef_MedicPistol', class'KFWeapDef_MedicSMG', class'KFWeapDef_MedicShotgun', class'KFWeapDef_MedicRifle')
 }

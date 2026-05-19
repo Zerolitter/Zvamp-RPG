@@ -279,5 +279,5 @@ function LostKeyFocus()
 defaultproperties
 {
 	MaxTextLength=2147483638
-	TextColor=(R=255,G=255,B=255,A=255)
+	TextColor=(R=218,G=207,B=238,A=255)
 }

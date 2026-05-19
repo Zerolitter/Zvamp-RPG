@@ -96,6 +96,8 @@ final function KFGUI_CheckBox AddCheckBox(string Cap, string TT, name IDN, bool 
 
 	CB = KFGUI_CheckBox(SettingsBox.AddListComponent(class'KFGUI_CheckBox'));
 	CB.LableString = Cap;
+	CB.XSize = 0.46;
+	CB.LableWidth = 0.78;
 	CB.ToolTip = TT;
 	CB.bChecked = bDefault;
 	CB.InitMenu();
@@ -113,13 +115,13 @@ final function KFGUI_Button AddButton(string ButtonText, string Cap, string TT, 
 	MC.InitMenu();
 	Label = new(MC) class'KFGUI_TextLable';
 	Label.SetText(Cap);
-	Label.XSize = 0.75;
+	Label.XSize = 0.36;
 	Label.FontScale = 0;
 	Label.AlignY = 1;
 	MC.AddComponent(Label);
 	CB = new(MC) class'KFGUI_Button';
-	CB.XPosition = 0.77;
-	CB.XSize = 0.22;
+	CB.XPosition = 0.39;
+	CB.XSize = 0.20;
 	CB.ButtonText = ButtonText;
 	CB.ToolTip = TT;
 	CB.ID = IDN;

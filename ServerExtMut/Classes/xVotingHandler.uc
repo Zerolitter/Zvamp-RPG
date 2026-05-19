@@ -46,6 +46,72 @@ var string PendingMapURL;
 var KFGameReplicationInfo KF;
 var bool bMapvoteHasEnded,bMapVoteTimer,bHistorySaved;
 
+final function string GetVoteNames(int GameIndex, int MapIndex)
+{
+	local int i;
+	local string S;
+
+	for (i=0; i<ActiveVoters.Length; ++i)
+	{
+		if (ActiveVoters[i]!=None && ActiveVoters[i].CurrentVote[0]==GameIndex && ActiveVoters[i].CurrentVote[1]==MapIndex)
+		{
+			if (S!="")
+				S $= ", ";
+			if (ActiveVoters[i].PlayerOwner!=None && ActiveVoters[i].PlayerOwner.PlayerReplicationInfo!=None)
+				S $= ActiveVoters[i].PlayerOwner.PlayerReplicationInfo.PlayerName;
+			else S $= "Unknown";
+		}
+	}
+	return S;
+}
+
+final function SendVoteNames(int GameIndex, int MapIndex)
+{
+	local int i;
+	local string Names;
+
+	Names = GetVoteNames(GameIndex,MapIndex);
+	for (i=(ActiveVoters.Length-1); i>=0; --i)
+		if (ActiveVoters[i]!=None)
+			ActiveVoters[i].ClientReceiveVoteNames(GameIndex,MapIndex,Names);
+}
+
+final function string RemoveMutatorFromList(string MutatorList, string MutatorClass)
+{
+	local int i,p;
+	local string Entry,Result;
+
+	MutatorClass = Caps(MutatorClass);
+	while (MutatorList!="")
+	{
+		p = InStr(MutatorList,",");
+		if (p==-1)
+		{
+			Entry = MutatorList;
+			MutatorList = "";
+		}
+		else
+		{
+			Entry = Left(MutatorList,p);
+			MutatorList = Mid(MutatorList,p+1);
+		}
+		while (Len(Entry)>0 && (Left(Entry,1)==" " || Left(Entry,1)==Chr(9)))
+			Entry = Mid(Entry,1);
+		while (Len(Entry)>0 && (Right(Entry,1)==" " || Right(Entry,1)==Chr(9)))
+			Entry = Left(Entry,Len(Entry)-1);
+		i = InStr(Entry,"?");
+		if (i!=-1)
+			Entry = Left(Entry,i);
+		if (Caps(Entry)!=MutatorClass && Entry!="")
+		{
+			if (Result!="")
+				Result $= ",";
+			Result $= Entry;
+		}
+	}
+	return Result;
+}
+
 function PostBeginPlay()
 {
 	local int i,j,z,n,UpV,DownV,Seq,NumPl;
@@ -314,6 +380,8 @@ function ClientDownloadInfo(xVotingReplication V)
 function ClientCastVote(xVotingReplication V, int GameIndex, int MapIndex, bool bAdminForce)
 {
 	local int i;
+	local int OldGame;
+	local int OldMap;
 
 	if (bMapvoteHasEnded)
 		return;
@@ -328,11 +396,16 @@ function ClientCastVote(xVotingReplication V, int GameIndex, int MapIndex, bool 
 		V.PlayerOwner.ClientMessage("Error: Can't vote that map (wrong Prefix to that game mode)!");
 		return;
 	}
-	if (V.CurrentVote[0]>=0)
-		AddVote(-1,V.CurrentVote[1],V.CurrentVote[0]);
+	OldGame = V.CurrentVote[0];
+	OldMap = V.CurrentVote[1];
+	if (OldGame>=0)
+		AddVote(-1,OldMap,OldGame);
 	V.CurrentVote[0] = GameIndex;
 	V.CurrentVote[1] = MapIndex;
 	AddVote(1,MapIndex,GameIndex);
+	if (OldGame>=0)
+		SendVoteNames(OldGame,OldMap);
+	SendVoteNames(GameIndex,MapIndex);
 	for (i=(ActiveVoters.Length-1); i>=0; --i)
 		ActiveVoters[i].ClientNotifyVote(V.PlayerOwner.PlayerReplicationInfo,GameIndex,MapIndex);
 	TallyVotes();
@@ -340,14 +413,16 @@ function ClientCastVote(xVotingReplication V, int GameIndex, int MapIndex, bool 
 
 function ClientRankMap(xVotingReplication V, bool bUp)
 {
-	class'xMapVoteHistory'.Static.AddMapKarma(iCurrentHistory,bUp);
 }
 
 function ClientDisconnect(xVotingReplication V)
 {
 	ActiveVoters.RemoveItem(V);
 	if (V.CurrentVote[0]>=0)
+	{
 		AddVote(-1,V.CurrentVote[1],V.CurrentVote[0]);
+		SendVoteNames(V.CurrentVote[0],V.CurrentVote[1]);
+	}
 	TallyVotes();
 }
 
@@ -528,7 +603,7 @@ function Timer()
 final function SwitchToLevel(int GameIndex, int MapIndex, bool bAdminForce)
 {
 	local int i;
-	local string S;
+	local string S,BaseMutatorName,ExtraMutators;
 
 	if (bMapvoteHasEnded)
 		return;
@@ -550,9 +625,11 @@ final function SwitchToLevel(int GameIndex, int MapIndex, bool bAdminForce)
 		ActiveVoters[i].ClientNotifyVoteWin(GameIndex,MapIndex,bAdminForce);
 	}
 
-	PendingMapURL = Maps[MapIndex].MapName$"?Game="$GameModes[GameIndex].GameClass$"?Mutator="$PathName(BaseMutator);
-	if (GameModes[GameIndex].Mutators!="")
-		PendingMapURL $= ","$GameModes[GameIndex].Mutators;
+	BaseMutatorName = PathName(BaseMutator);
+	ExtraMutators = RemoveMutatorFromList(GameModes[GameIndex].Mutators,BaseMutatorName);
+	PendingMapURL = Maps[MapIndex].MapName$"?Game="$GameModes[GameIndex].GameClass$"?Mutator="$BaseMutatorName;
+	if (ExtraMutators!="")
+		PendingMapURL $= ","$ExtraMutators;
 	if (GameModes[GameIndex].Options!="")
 		PendingMapURL $= "?"$GameModes[GameIndex].Options;
 	`Log("MapVote: Switch map to "$PendingMapURL);
@@ -643,18 +720,4 @@ final function bool RemoveMap(string M)
 defaultproperties
 {
 	BaseMutator=Class'xVotingHandler'
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_one_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_two_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_three_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_four_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_five_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_six_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_seven_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_eight_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_nine_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_ten_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_20_seconds_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_30_seconds_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_1_minute_Cue')
-	AnnouncerCues.Add(SoundCue'xVoteAnnouncer.VX_HolyShit_Cue')
 }

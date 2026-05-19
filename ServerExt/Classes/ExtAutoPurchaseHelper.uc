@@ -28,6 +28,36 @@ final function Ext_PerkBase GetExtPerk()
 	return ActivePerkManager!=None ? ActivePerkManager.CurrentPerk : None;
 }
 
+final function class<KFWeaponDefinition> GetSafeGrenadeWeaponDef(Ext_PerkBase EP)
+{
+	if (EP != None && EP.GrenadeWeaponDef != None)
+	{
+		return EP.GrenadeWeaponDef;
+	}
+
+	if (CurrentPerk != None && CurrentPerk.GetGrenadeWeaponDef() != None)
+	{
+		return CurrentPerk.GetGrenadeWeaponDef();
+	}
+
+	return class'KFWeapDef_Grenade_Berserker';
+}
+
+final function float GetSafeArmorDiscountMod()
+{
+	if (ActivePerkManager != None)
+	{
+		return ActivePerkManager.GetArmorDiscountMod();
+	}
+
+	if (CurrentPerk != None)
+	{
+		return CurrentPerk.GetArmorDiscountMod();
+	}
+
+	return 1.f;
+}
+
 function DoAutoPurchase()
 {
 	local int PotentialDosh, i;
@@ -128,10 +158,14 @@ function SellOffPerkWeapons()
 	local Ext_PerkBase EP;
 
 	EP = GetExtPerk();
+	if (EP == None)
+	{
+		return;
+	}
 
 	for (i = 0; i < OwnedItemList.length; i++)
 	{
-		if (OwnedItemList[i].DefaultItem.AssociatedPerkClasses.Find(EP.BasePerk)==INDEX_NONE && OwnedItemList[i].DefaultItem.BlocksRequired != -1 && OwnedItemList[i].SellPrice != 0)
+		if (OwnedItemList[i].DefaultItem.AssociatedPerkClasses.Find(EP.BasePerk)==INDEX_NONE && !IsUtilityTraderItem(OwnedItemList[i].DefaultItem) && OwnedItemList[i].SellPrice != 0)
 		{
 			if (EP.AutoBuyLoadOutPath.Find(OwnedItemList[i].DefaultItem.WeaponDef) == INDEX_NONE)
 			{
@@ -142,49 +176,205 @@ function SellOffPerkWeapons()
 	}
 }
 
+final function bool TraderItemMatchesWeapon(KFWeapon KFW, STraderItem Item)
+{
+	if (KFW == None)
+	{
+		return false;
+	}
+
+	if (KFW.Class.Name == Item.ClassName
+		|| KFW.Class.Name == Item.SingleClassName
+		|| KFW.Class.Name == Item.DualClassName)
+	{
+		return true;
+	}
+
+	if (Item.WeaponDef != None
+		&& Item.WeaponDef.default.WeaponClassPath != ""
+		&& PathName(KFW.Class) ~= Item.WeaponDef.default.WeaponClassPath)
+	{
+		return true;
+	}
+
+	if (Item.WeaponDef != None
+		&& Item.WeaponDef.default.WeaponClassPath != ""
+		&& InStr(Caps(Item.WeaponDef.default.WeaponClassPath), Caps(string(KFW.Class.Name))) >= 0)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+final function bool IsUtilityTraderItem(STraderItem Item)
+{
+	if (Item.BlocksRequired == -1 || Item.WeaponDef == class'KFWeapDef_Welder')
+	{
+		return true;
+	}
+
+	if (Item.WeaponDef != None && InStr(Caps(Item.WeaponDef.default.WeaponClassPath), "WELDER") >= 0)
+	{
+		return true;
+	}
+
+	if (Item.WeaponDef != None && IsUtilityWeaponName(Item.WeaponDef.default.WeaponClassPath))
+	{
+		return true;
+	}
+
+	if (IsUtilityWeaponName(string(Item.ClassName)))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+final function bool IsUtilityWeaponName(string ItemName)
+{
+	local string UtilityName;
+
+	UtilityName = Caps(ItemName);
+	return InStr(UtilityName, "WRENCH") >= 0
+		|| InStr(UtilityName, "TURRET") >= 0
+		|| InStr(UtilityName, "AUTOTURRET") >= 0
+		|| InStr(UtilityName, "SENTRY") >= 0;
+}
+
+final function class<KFWeaponDefinition> ResolveWeaponDefForWeapon(KFWeapon KFW)
+{
+	local string ClassPath;
+	local string PackageName;
+	local string ClassName;
+	local string Suffix;
+	local string DefPath;
+	local int DotPos;
+	local class<KFWeaponDefinition> WeaponDef;
+
+	if (KFW == None)
+	{
+		return None;
+	}
+
+	ClassPath = PathName(KFW.Class);
+	DotPos = InStr(ClassPath, ".");
+	if (DotPos <= 0)
+	{
+		return None;
+	}
+
+	PackageName = Left(ClassPath, DotPos);
+	ClassName = string(KFW.Class.Name);
+	if (Left(ClassName, 7) ~= "KFWeap_")
+	{
+		Suffix = Mid(ClassName, 7);
+		DefPath = PackageName $ ".KFWeapDef_" $ Suffix;
+		WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+		if (WeaponDef != None && PathName(KFW.Class) ~= WeaponDef.default.WeaponClassPath)
+		{
+			return WeaponDef;
+		}
+	}
+
+	DefPath = PackageName $ "." $ Repl(ClassName, "KFWeap", "KFWeapDef");
+	WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+	if (WeaponDef != None && PathName(KFW.Class) ~= WeaponDef.default.WeaponClassPath)
+	{
+		return WeaponDef;
+	}
+
+	return None;
+}
+
 function InitializeOwnedItemList()
 {
-	local Inventory Inv;
-	local KFWeapon KFW;
 	local KFPawn_Human KFP;
 	local Ext_PerkBase EP;
+	local class<KFWeaponDefinition> SafeGrenadeDef;
+	local class<KFPerk> SafePerkClass;
+	local KFPerk PawnPerk;
 
 	EP = GetExtPerk();
 	OwnedItemList.length = 0;
 
 	TraderItems = KFGameReplicationInfo(WorldInfo.GRI).TraderItems;
 
-	KFP = KFPawn_Human(Pawn);
-	if (KFP != none)
+	if (TraderItems == None || MyKFIM == None)
 	{
-		// init armor purchase values
-		ArmorItem.SpareAmmoCount = KFP.Armor;
-		ArmorItem.MaxSpareAmmo = KFP.GetMaxArmor();
-		ArmorItem.AmmoPricePerMagazine = TraderItems.ArmorPrice * ActivePerkManager.GetArmorDiscountMod();
-		ArmorItem.DefaultItem.WeaponDef = TraderItems.ArmorDef;
+		`log("[Zvampext] ExtAutoPurchaseHelper skipped trader item init: TraderItems="$TraderItems$" MyKFIM="$MyKFIM);
+		return;
+	}
 
-		// init grenade purchase values
-		GrenadeItem.SpareAmmoCount = MyKFIM.GrenadeCount;
+	KFP = KFPawn_Human(Pawn);
+	if (KFP == None)
+	{
+		`log("[Zvampext] ExtAutoPurchaseHelper skipped trader item init: pawn is not KFPawn_Human");
+		return;
+	}
+
+	ArmorItem.SpareAmmoCount = KFP.Armor;
+	ArmorItem.MaxSpareAmmo = KFP.GetMaxArmor();
+	ArmorItem.AmmoPricePerMagazine = TraderItems.ArmorPrice * GetSafeArmorDiscountMod();
+	ArmorItem.DefaultItem.WeaponDef = TraderItems.ArmorDef != None ? TraderItems.ArmorDef : class'KFWeapDef_Armor';
+
+	PawnPerk = KFP.GetPerk();
+	GrenadeItem.SpareAmmoCount = MyKFIM.GrenadeCount;
+	if (ActivePerkManager != None)
+	{
 		GrenadeItem.MaxSpareAmmo = ActivePerkManager.MaxGrenadeCount;
-		GrenadeItem.AmmoPricePerMagazine = TraderItems.GrenadePrice;
-		GrenadeItem.DefaultItem.WeaponDef = EP.GrenadeWeaponDef;
+	}
+	else if (PawnPerk != None)
+	{
+		GrenadeItem.MaxSpareAmmo = PawnPerk.MaxGrenadeCount;
+	}
+	else
+	{
+		GrenadeItem.MaxSpareAmmo = 0;
+	}
+	GrenadeItem.AmmoPricePerMagazine = TraderItems.GrenadePrice;
+	SafeGrenadeDef = GetSafeGrenadeWeaponDef(EP);
+	GrenadeItem.DefaultItem.WeaponDef = SafeGrenadeDef;
+	SafePerkClass = GetBasePerk();
+	if (SafePerkClass == None && CurrentPerk != None)
+	{
+		SafePerkClass = CurrentPerk.Class;
+	}
+	if (SafePerkClass == None)
+	{
+		SafePerkClass = class'KFPerk_Berserker';
+	}
+	GrenadeItem.DefaultItem.AssociatedPerkClasses[0] = SafePerkClass;
 
-		// @temp: fill in stuff that is normally serialized in the archetype
-		GrenadeItem.DefaultItem.AssociatedPerkClasses[0] = CurrentPerk.Class;
+	`log("[Zvampext] ExtAutoPurchaseHelper initialized generic trader items: owned=0 armorDef="$ArmorItem.DefaultItem.WeaponDef$" grenadeDef="$GrenadeItem.DefaultItem.WeaponDef$" perk="$SafePerkClass);
+}
 
-		for (Inv = MyKFIM.InventoryChain; Inv != none; Inv = Inv.Inventory)
+simulated function int GetAdjustedSellPriceFor(const out STraderItem ShopItem)
+{
+	if (ShopItem.WeaponDef == class'KFWeapDef_Welder')
+	{
+		return Max(1, ShopItem.WeaponDef.default.BuyPrice / 2);
+	}
+
+	return Super.GetAdjustedSellPriceFor(ShopItem);
+}
+
+function SetWeaponInformation(KFWeapon KFW)
+{
+	local int i;
+
+	if (KFW == None || TraderItems == None)
+	{
+		return;
+	}
+
+	for (i = 0; i < TraderItems.SaleItems.Length; ++i)
+	{
+		if (TraderItemMatchesWeapon(KFW, TraderItems.SaleItems[i]))
 		{
-			KFW = KFWeapon(Inv);
-			if (KFW != none)
-			{
-				// Set the weapon information and add it to the OwnedItemList
-				SetWeaponInformation(KFW);
-			}
-		}
-
-		if (MyGfxManager != none && MyGfxManager.TraderMenu != none)
-		{
-			MyGfxManager.TraderMenu.OwnedItemList = OwnedItemList;
+			SetWeaponInfo(KFW, TraderItems.SaleItems[i]);
+			return;
 		}
 	}
 }
@@ -234,16 +424,11 @@ function int AddItemByPriority(out SItemInformation WeaponInfo)
 	OwnedItemList.InsertItem(BestIndex, WeaponInfo);
 
 	// Add secondary ammo immediately after the main weapon
-	if (WeaponInfo.DefaultItem.WeaponDef.static.UsesSecondaryAmmo())
+	if (WeaponInfo.DefaultItem.WeaponDef != None && WeaponInfo.DefaultItem.WeaponDef.static.UsesSecondaryAmmo())
 	{
 		WeaponInfo.bIsSecondaryAmmo = true;
 		WeaponInfo.SellPrice = 0;
 		OwnedItemList.InsertItem(BestIndex + 1, WeaponInfo);
-	}
-
-	if (MyGfxManager != none && MyGfxManager.TraderMenu != none)
-	{
-		MyGfxManager.TraderMenu.OwnedItemList = OwnedItemList;
 	}
 
 	return BestIndex;

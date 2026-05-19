@@ -53,6 +53,7 @@ var config int FirstLevelExp, // How much EXP needed for first level.
 				MinLevelForPrestige, // Minimum level required for perk prestige.
 				PrestigeSPIncrease, // Starpoint increase per prestige levelup.
 				MaxPrestige,
+				StatBuyStep, // Fixed number of stat levels bought per UI click.
 				MinimalDataLevel; // Maximum prestige level.
 var config float PrestigeXPReduce; // Amount of XP cost is reduced for each prestige.
 var config array<string> TraitClasses;
@@ -71,6 +72,7 @@ struct FPerkStat
 	var config int MaxValue,CostPerValue;
 	var config float Progress;
 	var config name StatType;
+	var config name StatGroup;
 	var transient int CurrentValue,OldValue;
 	var transient float DisplayValue;
 	var transient string UIName;
@@ -163,7 +165,7 @@ replication
 {
 	// Things the server should send to the client.
 	if (true)
-		CurrentLevel,CurrentPrestige,CurrentEXP,NextLevelEXP,CurrentSP,LastLevelEXP,bHasNightVision,MinLevelForPrestige,PrestigeSPIncrease,MaxPrestige,bTacticalReload,EnemyHealthRange;
+		CurrentLevel,CurrentPrestige,CurrentEXP,NextLevelEXP,CurrentSP,LastLevelEXP,bHasNightVision,MinLevelForPrestige,PrestigeSPIncrease,MaxPrestige,StatBuyStep,bTacticalReload,EnemyHealthRange;
 }
 
 simulated final function bool IsWeaponOnPerk(KFWeapon W)
@@ -286,7 +288,7 @@ final function bool HasAnyProgress()
 	return (CurrentEXP>0 || CurrentPrestige>0);
 }
 
-reliable client simulated function ClientReceiveStat(int Index, int MaxValue, int CostPerValue, name Type, int CurValue, float Progress)
+reliable client simulated function ClientReceiveStat(int Index, int MaxValue, int CostPerValue, name Type, int CurValue, float Progress, name StatGroup)
 {
 	local int i;
 
@@ -300,6 +302,7 @@ reliable client simulated function ClientReceiveStat(int Index, int MaxValue, in
 		PerkStats[Index].CurrentValue = CurValue;
 		PerkStats[Index].DisplayValue = 0.f;
 		PerkStats[Index].Progress = Progress;
+		PerkStats[Index].StatGroup = StatGroup;
 	}
 	i = DefPerkStats.Find('StatType',Type);
 	if (i>=0)
@@ -321,6 +324,11 @@ reliable client simulated function ClientSetStatValue(int Index, int NewValue)
 	PerkStats[Index].CurrentValue = NewValue;
 	if (bPerkNetReady)
 		ApplyEffects();
+}
+
+reliable client simulated function ClientSetCurrentSP(int NewValue)
+{
+	CurrentSP = NewValue;
 }
 
 reliable client simulated function ClientReceiveTrait(int Index, class<Ext_TraitBase> TC, byte Lvl)
@@ -664,14 +672,28 @@ function int GetNeededExp(int LevelNum)
 static function CheckConfig()
 {
 	local int i;
+	local bool bConfigChanged;
 	local class<Ext_TraitBase> T;
 
 	if (Default.ConfigVersion!=Default.CurrentConfigVer)
 	{
 		UpdateConfigs(Default.ConfigVersion);
 		Default.ConfigVersion = Default.CurrentConfigVer;
-		StaticSaveConfig();
+		bConfigChanged = true;
 	}
+	if (!Class'Ext_SkillCosts'.Static.LoadPerkStats(Default.Class))
+	{
+		if (Default.PerkStats.Length==0)
+		{
+			AddStatsCfg(0);
+			UpdateBalanceCfg();
+		}
+		Class'Ext_SkillCosts'.Static.StorePerkStats(Default.Class);
+	}
+	if (EnsureDefaultTraitClasses())
+		bConfigChanged = true;
+	if (bConfigChanged)
+		StaticSaveConfig();
 	for (i=0; i<Default.TraitClasses.Length; ++i)
 	{
 		T = class<Ext_TraitBase>(DynamicLoadObject(Default.TraitClasses[i],Class'Class'));
@@ -692,6 +714,7 @@ static function UpdateConfigs(int OldVer)
 		Default.MinimumLevel = 0;
 		Default.MaximumLevel = 150;
 		Default.StarPointsPerLevel = 15;
+		Default.StatBuyStep = 5;
 
 		// Prestige.
 		Default.MinLevelForPrestige = 140;
@@ -741,10 +764,103 @@ static function UpdateConfigs(int OldVer)
 			Default.PrestigeXPReduce = 0.05;
 		}
 
-		Default.TraitClasses.Length = Default.DefTraitList.Length;
-		for (i=0; i<Default.DefTraitList.Length; ++i)
-			Default.TraitClasses[i] = PathName(Default.DefTraitList[i]);
+		EnsureDefaultTraitClasses();
+		if (OldVer<=15)
+			UpdateBalanceCfg();
+		if (OldVer<=17 && Default.StatBuyStep<=0)
+			Default.StatBuyStep = 5;
 	}
+}
+
+static final function bool EnsureDefaultTraitClasses()
+{
+	local int i;
+	local bool bChanged;
+
+	bChanged = RemoveDuplicateTraitClasses();
+	for (i=0; i<Default.DefTraitList.Length; ++i)
+	{
+		if (AddTraitClassIfMissing(Default.DefTraitList[i]))
+			bChanged = true;
+	}
+	return bChanged;
+}
+
+static final function bool AddTraitClassIfMissing(class<Ext_TraitBase> T)
+{
+	local int i;
+	local string TraitPath;
+
+	if (T==None)
+		return false;
+
+	TraitPath = PathName(T);
+	for (i=0; i<Default.TraitClasses.Length; ++i)
+	{
+		if (Default.TraitClasses[i]~=TraitPath)
+			return false;
+	}
+	Default.TraitClasses.AddItem(TraitPath);
+	return true;
+}
+
+static final function bool RemoveDuplicateTraitClasses()
+{
+	local int i,j;
+	local bool bChanged;
+
+	for (i=0; i<Default.TraitClasses.Length; ++i)
+	{
+		for (j=Default.TraitClasses.Length-1; j>i; --j)
+		{
+			if (Default.TraitClasses[i]~=Default.TraitClasses[j])
+			{
+				Default.TraitClasses.Remove(j,1);
+				bChanged = true;
+			}
+		}
+	}
+	return bChanged;
+}
+
+static final function UpdateBalanceCfg()
+{
+	UpdateStatCfg('Speed',800,1,0.25,true,true,true);
+	UpdateStatCfg('Damage',10000,1,0.05,true,true,true);
+	UpdateStatCfg('Recoil',1000,1,0.1,true,true,true);
+	UpdateStatCfg('Spread',1000,1,0.2,true,true,true);
+	UpdateStatCfg('Rate',1500,1,0.1,true,true,true);
+	UpdateStatCfg('Reload',1500,1,0.1,true,true,true);
+	UpdateStatCfg('Health',4000,1,0.1,true,true,true);
+	UpdateStatCfg('KnockDown',1000,1,0.5,true,true,true);
+	UpdateStatCfg('HeadDamage',400,50,1.f,true,true,true);
+	UpdateStatCfg('Mag',1000,1,0.1,true,true,true);
+	UpdateStatCfg('Spare',5000,1,1.25,true,true,true);
+	UpdateStatCfg('OffDamage',10000,1,0.25,true,true,true);
+	UpdateStatCfg('Armor',2500,1,0.25,true,true,true);
+	UpdateStatCfg('Heal',200,1,0.5,true,true,true);
+	UpdateStatCfg('PoisonDmg',1000,1,1.f,true,true,true);
+	UpdateStatCfg('SonicDmg',200,1,1.f,true,true,true);
+	UpdateStatCfg('FireDmg',200,1,1.f,true,true,true);
+	UpdateStatCfg('AllDmg',5000,1,0.5,true,true,true);
+	UpdateStatCfg('HealRecharge',200,1,1.5,true,true,true);
+	UpdateStatCfg('Welder',200,1,1.5,true,true,true);
+	UpdateStatCfg('Switch',1000,1,0.1,true,true,true);
+}
+
+static final function UpdateStatCfg(name StatType, int MaxValue, int CostPerValue, float Progress, bool bSetMax, bool bSetCost, bool bSetProgress)
+{
+	local int i;
+
+	i = Default.PerkStats.Find('StatType',StatType);
+	if (i<0)
+		return;
+	if (bSetMax)
+		Default.PerkStats[i].MaxValue = MaxValue;
+	if (bSetCost)
+		Default.PerkStats[i].CostPerValue = CostPerValue;
+	if (bSetProgress)
+		Default.PerkStats[i].Progress = Progress;
 }
 
 static final function AddStatsCfg(int StartRange)
@@ -761,6 +877,7 @@ static final function AddStatsCfg(int StartRange)
 		Default.PerkStats[j].CostPerValue = Default.DefPerkStats[i].CostPerValue;
 		Default.PerkStats[j].StatType = Default.DefPerkStats[i].StatType;
 		Default.PerkStats[j].Progress = Default.DefPerkStats[i].Progress;
+		Default.PerkStats[j].StatGroup = (j<6 ? 'A1' : 'B1');
 		++j;
 	}
 }
@@ -798,6 +915,8 @@ static function string GetValue(name PropName, int ElementIndex)
 		return string(Default.MaximumLevel);
 	case 'StarPointsPerLevel':
 		return string(Default.StarPointsPerLevel);
+	case 'StatBuyStep':
+		return string(Default.StatBuyStep);
 	case 'TraitClasses':
 		return ElementIndex==-1 ? string(Default.TraitClasses.Length) : Default.TraitClasses[ElementIndex];
 	case 'PerkStats':
@@ -833,6 +952,8 @@ static function ApplyValue(name PropName, int ElementIndex, string Value)
 		Default.MaximumLevel = int(Value);		break;
 	case 'StarPointsPerLevel':
 		Default.StarPointsPerLevel = int(Value); break;
+	case 'StatBuyStep':
+		Default.StatBuyStep = Max(int(Value),1); break;
 	case 'TraitClasses':
 		if (Value=="#DELETE")
 			Default.TraitClasses.Remove(ElementIndex,1);
@@ -852,6 +973,7 @@ static function ApplyValue(name PropName, int ElementIndex, string Value)
 				Default.PerkStats.Length = ElementIndex+1;
 			Default.PerkStats[ElementIndex] = ParsePerkStatStr(Value);
 		}
+		Class'Ext_SkillCosts'.Static.StorePerkStats(Default.Class);
 		break;
 	case 'MinLevelForPrestige':
 		Default.MinLevelForPrestige = int(Value); break;
@@ -1017,7 +1139,7 @@ function ReplicateTimer()
 		}
 		else
 		{
-			ClientReceiveStat(RepIndex,PerkStats[RepIndex].MaxValue,PerkStats[RepIndex].CostPerValue,PerkStats[RepIndex].StatType,PerkStats[RepIndex].CurrentValue,PerkStats[RepIndex].Progress);
+			ClientReceiveStat(RepIndex,PerkStats[RepIndex].MaxValue,PerkStats[RepIndex].CostPerValue,PerkStats[RepIndex].StatType,PerkStats[RepIndex].CurrentValue,PerkStats[RepIndex].Progress,PerkStats[RepIndex].StatGroup);
 			++RepIndex;
 		}
 		break;
@@ -1204,8 +1326,9 @@ simulated function float ApplyEffect(name Type, float Value, float Progress)
 		Modifiers[6] = 1.f + (Value*Progress);
 		if (bActivePerk && PlayerOwner.Pawn!=None)
 		{
-			PlayerOwner.Pawn.HealthMax = PlayerOwner.Pawn.Default.Health;
-			ModifyHealth(PlayerOwner.Pawn.HealthMax);
+			PlayerOwner.Pawn.HealthMax = GetZvampextHealthCap(PlayerOwner.Pawn.Default.Health);
+			if (PlayerOwner.Pawn.Health>PlayerOwner.Pawn.HealthMax)
+				PlayerOwner.Pawn.Health = PlayerOwner.Pawn.HealthMax;
 		}
 		break;
 	case 'KnockDown':
@@ -1237,10 +1360,11 @@ simulated function float ApplyEffect(name Type, float Value, float Progress)
 		Modifiers[14] = (Value*Progress*100.f);
 		if (bActivePerk && KFPawn_Human(PlayerOwner.Pawn)!=None)
 		{
-			KFPawn_Human(PlayerOwner.Pawn).MaxArmor = KFPawn_Human(PlayerOwner.Pawn).Default.MaxArmor;
-			ModifyArmor(KFPawn_Human(PlayerOwner.Pawn).MaxArmor);
+			KFPawn_Human(PlayerOwner.Pawn).MaxArmor = GetZvampextArmorCap(KFPawn_Human(PlayerOwner.Pawn).Default.MaxArmor);
+			if (KFPawn_Human(PlayerOwner.Pawn).Armor>KFPawn_Human(PlayerOwner.Pawn).MaxArmor)
+				KFPawn_Human(PlayerOwner.Pawn).Armor = KFPawn_Human(PlayerOwner.Pawn).MaxArmor;
 		}
-		return FMin(Value*Progress,1.55);
+		return FMin(Value*Progress,4.0);
 	case 'PoisonDmg':
 		Modifiers[15] = 1.f / (1.f+Value*Progress);
 		break;
@@ -1262,8 +1386,34 @@ simulated function float ApplyEffect(name Type, float Value, float Progress)
 	case 'Switch':
 		Modifiers[21] = 1.f / (1.f+Value*Progress);
 		break;
+	case 'BossDamageReduction':
+		Modifiers[22] = 1.f / (1.f+Value*Progress);
+		break;
+	case 'EliteDamageReduction':
+		Modifiers[23] = 1.f / (1.f+Value*Progress);
+		break;
 	}
 	return (Value*Progress);
+}
+
+simulated final function bool IsBossDamageInstigator(Controller InstigatedBy)
+{
+	local string PawnClassName;
+
+	if (InstigatedBy==None || KFPawn_Monster(InstigatedBy.Pawn)==None)
+		return false;
+	PawnClassName = Caps(string(InstigatedBy.Pawn.Class));
+	return InStr(PawnClassName,"HANS")>=0 || InStr(PawnClassName,"PATRIARCH")>=0 || InStr(PawnClassName,"MATRIARCH")>=0 || InStr(PawnClassName,"ABOMINATION")>=0 || InStr(PawnClassName,"KINGFLESHPOUND")>=0;
+}
+
+simulated final function bool IsEliteDamageInstigator(Controller InstigatedBy)
+{
+	local string PawnClassName;
+
+	if (InstigatedBy==None || KFPawn_Monster(InstigatedBy.Pawn)==None)
+		return false;
+	PawnClassName = Caps(string(InstigatedBy.Pawn.Class));
+	return InStr(PawnClassName,"ELITE")>=0 || InStr(PawnClassName,"DAR_")>=0;
 }
 
 simulated function ModifyDamageGiven(out int InDamage, optional Actor DamageCauser, optional KFPawn_Monster MyKFPM, optional KFPlayerController DamageInstigator, optional class<KFDamageType> DamageType, optional int HitZoneIdx)
@@ -1293,6 +1443,13 @@ simulated function ModifyDamageTaken(out int InDamage, optional class<DamageType
 			InDamage = Max(InDamage*Modifiers[17],1);
 		if (Modifiers[18]<1 && InstigatedBy!=None && InstigatedBy!=PlayerOwner)
 			InDamage = Max(InDamage*Modifiers[18],1);
+		if (InstigatedBy!=None && KFPawn_Monster(InstigatedBy.Pawn)!=None)
+		{
+			if (Modifiers[22]<1 && IsBossDamageInstigator(InstigatedBy))
+				InDamage = Max(InDamage*Modifiers[22],1);
+			if (Modifiers[23]<1 && IsEliteDamageInstigator(InstigatedBy))
+				InDamage = Max(InDamage*Modifiers[23],1);
+		}
 	}
 }
 
@@ -1325,12 +1482,27 @@ simulated function float GetCameraViewShakeModifier(KFWeapon KFW)
 
 function ModifyHealth(out int InHealth)
 {
-	InHealth *= Modifiers[6];
+	InHealth = GetZvampextHealthCap(InHealth);
 }
 
 function ModifyArmor(out byte MaxArmor)
 {
 	MaxArmor = Min(MaxArmor+Modifiers[14],255);
+}
+
+final function int GetZvampextHealthCap(int BaseHealth)
+{
+	return Clamp(Round(float(BaseHealth) * GetZvampextHealthModifier()),1,500);
+}
+
+final function float GetZvampextHealthModifier()
+{
+	return (Modifiers[6]>0.f ? Modifiers[6] : 1.f);
+}
+
+final function int GetZvampextArmorCap(int BaseArmor)
+{
+	return Clamp(Round(float(BaseArmor) + Modifiers[14]),0,500);
 }
 
 function float GetKnockdownPowerModifier()
@@ -1387,7 +1559,7 @@ function bool ModifyHealAmount(out float HealAmount)
 simulated function ModifyMagSizeAndNumber(KFWeapon KFW, out int MagazineCapacity, optional array< Class<KFPerk> > WeaponPerkClass, optional bool bSecondary=false, optional name WeaponClassname)
 {
 	if (MagazineCapacity>2 && (KFW==None ? WeaponPerkClass.Find(BasePerk)>=0 : IsWeaponOnPerk(KFW))) // Skip boomstick for this.
-		MagazineCapacity = Min(MagazineCapacity*Modifiers[10],255);
+		MagazineCapacity = Min(MagazineCapacity*Modifiers[10],2000);
 }
 
 simulated function ModifySpareAmmoAmount(KFWeapon KFW, out int PrimarySpareAmmo, optional const out STraderItem TraderItem, optional bool bSecondary)
@@ -1522,7 +1694,7 @@ simulated function float GetTightChokeModifier()
 
 defaultproperties
 {
-	CurrentConfigVer=15
+	CurrentConfigVer=18
 	bOnlyRelevantToOwner=true
 	bCanBeGrabbed=true
 	NetUpdateFrequency=1
@@ -1564,6 +1736,7 @@ defaultproperties
 	WebConfigs.Add((PropType=0,PropName="MinimumLevel",UIName="Minimum Level",UIDesc="The minimum level of players"))
 	WebConfigs.Add((PropType=0,PropName="MaximumLevel",UIName="Maximum Level",UIDesc="The maximum level of players"))
 	WebConfigs.Add((PropType=0,PropName="StarPointsPerLevel",UIName="Star Points Per Lvl",UIDesc="Number of star points players earn per level"))
+	WebConfigs.Add((PropType=0,PropName="StatBuyStep",UIName="Stat Buy Step",UIDesc="Number of stat levels bought by each + click in the perk UI"))
 	WebConfigs.Add((PropType=2,PropName="TraitClasses",UIName="Trait Classes",UIDesc="The class names of traits players can buy",NumElements=-1))
 	WebConfigs.Add((PropType=2,PropName="PerkStats",UIName="Perk Stats",UIDesc="List of perk stats (format in: StatName,Max Stat,Cost Per Stat,Progress Per Level)",NumElements=-1))
 	WebConfigs.Add((PropType=0,PropName="MinLevelForPrestige",UIName="Min Level For Prestige",UIDesc="Minimum level required to prestige the perk (-1 = disabled)"))
@@ -1594,7 +1767,11 @@ defaultproperties
 	DefPerkStats(19)=(MaxValue=500,CostPerValue=1,StatType="HeadDamage",Progress=1,bHiddenConfig=true)
 	DefPerkStats(20)=(MaxValue=200,CostPerValue=1,StatType="HealRecharge",Progress=0.5,bHiddenConfig=true)
 	DefPerkStats(21)=(MaxValue=100,CostPerValue=1,StatType="Switch",Progress=1)
+	DefPerkStats(22)=(MaxValue=1000,CostPerValue=1,StatType="BossDamageReduction",Progress=0.1,bHiddenConfig=true)
+	DefPerkStats(23)=(MaxValue=1000,CostPerValue=1,StatType="EliteDamageReduction",Progress=0.1,bHiddenConfig=true)
 
+	Modifiers.Add(1.f)
+	Modifiers.Add(1.f)
 	Modifiers.Add(1.f)
 	Modifiers.Add(1.f)
 	Modifiers.Add(1.f)

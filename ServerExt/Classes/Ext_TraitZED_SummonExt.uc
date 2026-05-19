@@ -48,7 +48,7 @@ static function ApplyEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level
 	// Make other traits refresh (apply HP/damage scalers).
 	for (i=0; i<Perk.PerkTraits.Length; ++i)
 		if (Perk.PerkTraits[i].CurrentLevel>0 && Class<Ext_TraitZEDBase>(Perk.PerkTraits[i].TraitType)!=None && !Class<Ext_TraitZEDBase>(Perk.PerkTraits[i].TraitType).Default.bIsSummoner)
-			Perk.PerkTraits[i].TraitType.Static.ApplyEffectOn(Player,Perk,Level,Data);
+			Perk.PerkTraits[i].TraitType.Static.ApplyEffectOn(Player,Perk,Perk.PerkTraits[i].CurrentLevel,Data);
 }
 
 static function CancelEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level, optional Ext_TraitDataStore Data)

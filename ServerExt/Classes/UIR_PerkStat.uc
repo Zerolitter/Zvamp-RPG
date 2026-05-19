@@ -18,27 +18,25 @@
 
 Class UIR_PerkStat extends KFGUI_MultiComponent;
 
-var KFGUI_TextLable InfoText;
-var KFGUI_NumericBox StatCountBox;
-var KFGUI_Button AddButton;
+var KFGUI_Button CostButton;
+var KFGUI_ZvampInvisibleHotspot StatTitleHotspot;
 
 var Ext_PerkBase MyPerk;
-var int StatIndex,OldValue,CurrentCost,MaxStatValue;
+var int StatIndex,OldValue,OldPoints,OldPendingAmount,CurrentCost,CurrentBuyAmount,MaxStatValue;
 var string ProgressStr;
 var bool bCostDirty;
 
 var localized string AddButtonToolTip;
-var localized string CountBoxToolTip;
 var localized string CostText;
 
 function InitMenu()
 {
-	InfoText = KFGUI_TextLable(FindComponentID('Info'));
-	StatCountBox = KFGUI_NumericBox(FindComponentID('CountBox'));
-	AddButton = KFGUI_Button(FindComponentID('AddBox'));
+	CostButton = KFGUI_Button(FindComponentID('CostBox'));
+	StatTitleHotspot = new(Self) class'KFGUI_ZvampInvisibleHotspot';
+	StatTitleHotspot.SetPosition(0.f,0.f,0.31,1.f);
+	Components.AddItem(StatTitleHotspot);
 
-	AddButton.ToolTip=AddButtonToolTip;
-	StatCountBox.ToolTip=CountBoxToolTip;
+	CostButton.ToolTip=AddButtonToolTip;
 
 	Super.InitMenu();
 }
@@ -47,8 +45,10 @@ function ShowMenu()
 {
 	Super.ShowMenu();
 	OldValue = -1;
+	OldPoints = -1;
+	OldPendingAmount = -1;
 	SetTimer(0.1,true);
-	EditBoxChange(StatCountBox);
+	UpdateStepInfo();
 }
 
 function CloseMenu()
@@ -61,128 +61,319 @@ function CloseMenu()
 function SetActivePerk(Ext_PerkBase P)
 {
 	MyPerk = P;
-	StatCountBox.Value = "5";
 	OldValue = -1;
+	OldPoints = -1;
+	OldPendingAmount = -1;
+	UpdateStepInfo();
 }
 
 function Timer()
 {
-	if (OldValue!=MyPerk.PerkStats[StatIndex].CurrentValue || bCostDirty)
+	local ExtPlayerController PC;
+	local int PendingAmount;
+
+	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length)
+		return;
+
+	PC = ExtPlayerController(GetPlayer());
+	if (PC!=None)
+		PendingAmount = PC.GetPendingStatBuyAmount(MyPerk.Class,StatIndex);
+
+	if (OldValue!=MyPerk.PerkStats[StatIndex].CurrentValue || OldPoints!=MyPerk.CurrentSP || OldPendingAmount!=PendingAmount || bCostDirty)
 	{
 		bCostDirty = false;
 		OldValue = MyPerk.PerkStats[StatIndex].CurrentValue;
-		if (CurrentCost != 0)
-			InfoText.SetText(MyPerk.GetStatUIStr(StatIndex)$" ["$OldValue$"/"$MaxStatValue$", "$CostText$" "$CurrentCost$", "$ProgressStr$"%]:");
+		OldPoints = MyPerk.CurrentSP;
+		OldPendingAmount = PendingAmount;
+		UpdateStepInfo();
+		if (CurrentCost > 0)
+			CostButton.ButtonText = string(CurrentCost);
 		else
-			InfoText.SetText(MyPerk.GetStatUIStr(StatIndex)$" ["$OldValue$"/"$MaxStatValue$", "$ProgressStr$"%]:");
+			CostButton.ButtonText = "-";
 	}
 }
 
 function BuyStatPoint(KFGUI_Button Sender)
 {
-	ExtPlayerController(GetPlayer()).BuyPerkStat(MyPerk.Class,StatIndex,StatCountBox.GetValueInt());
+	if (MyPerk!=None && StatIndex<MyPerk.PerkStats.Length && CurrentBuyAmount>0)
+	{
+		ExtPlayerController(GetPlayer()).QueuePerkStatBuy(MyPerk.Class,StatIndex,CurrentBuyAmount);
+		bCostDirty = true;
+	}
 }
 
-function EditBoxChange(KFGUI_EditBox Sender)
+function OpenBuyAmountPopup(KFGUI_Button Sender)
 {
-	if (MyPerk.PerkStats[StatIndex].CostPerValue > 1)
-		CurrentCost = StatCountBox.GetValueInt()*MyPerk.PerkStats[StatIndex].CostPerValue;
+	local UIR_StatBuyAmountPopup T;
+
+	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length || CurrentBuyAmount<=0)
+		return;
+
+	T = UIR_StatBuyAmountPopup(Owner.OpenMenu(class'UIR_StatBuyAmountPopup'));
+	if (T!=None)
+		T.SetupTo(MyPerk,StatIndex);
+}
+
+function ScrollMouseWheel(bool bUp)
+{
+	if (ParentComponent!=None)
+		ParentComponent.ScrollMouseWheel(bUp);
+}
+
+function DrawMenu()
+{
+	local ExtPlayerController PC;
+	local int PendingAmount;
+	local float BarX,BarY,BarW,BarH,FillW,PendingFillW,TS,XL,YL,ProgressValue,PendingProgressValue,MaxProgressValue,VisibleProgressPercent;
+	local string NameText,ValueText;
+
+	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length)
+		return;
+
+	BarX = CompPos[2]*0.40f;
+	BarY = CompPos[3]*0.24f;
+	BarW = CompPos[2]*0.58f;
+	BarH = CompPos[3]*0.52f;
+	NameText = GetShortStatName(MyPerk.PerkStats[StatIndex].StatType);
+
+	Canvas.SetPos(0.f,0.f);
+	Canvas.SetDrawColor(7,5,12,255);
+	Owner.CurrentStyle.DrawWhiteBox(CompPos[2],CompPos[3]);
+
+	Canvas.Font = Owner.CurrentStyle.PickFont(Owner.CurrentStyle.DefaultFontSize,TS);
+	Canvas.TextSize(NameText,XL,YL,TS,TS);
+	Canvas.SetPos(5.f,(CompPos[3]-YL)*0.5f);
+	Canvas.SetDrawColor(245,245,245,255);
+	Canvas.DrawText(NameText,,TS,TS);
+
+	Canvas.SetPos(BarX,BarY);
+	Canvas.SetDrawColor(72,68,86,255);
+	Owner.CurrentStyle.DrawWhiteBox(BarW,BarH);
+	Canvas.SetPos(BarX+4.f,BarY+4.f);
+	Canvas.SetDrawColor(18,16,26,255);
+	Owner.CurrentStyle.DrawWhiteBox(BarW-8.f,BarH-8.f);
+
+	ProgressValue = MyPerk.PerkStats[StatIndex].CurrentValue * MyPerk.PerkStats[StatIndex].Progress;
+	PC = ExtPlayerController(GetPlayer());
+	if (PC!=None)
+		PendingAmount = PC.GetPendingStatBuyAmount(MyPerk.Class,StatIndex);
+	PendingProgressValue = (MyPerk.PerkStats[StatIndex].CurrentValue+PendingAmount) * MyPerk.PerkStats[StatIndex].Progress;
+	MaxProgressValue = MyPerk.PerkStats[StatIndex].MaxValue * MyPerk.PerkStats[StatIndex].Progress;
+	if (MaxProgressValue>0.f)
+	{
+		VisibleProgressPercent = FClamp(PendingProgressValue / MaxProgressValue,0.f,1.f) * 100.f;
+		FillW = FClamp(ProgressValue / MaxProgressValue,0.f,1.f) * (BarW-8.f);
+		PendingFillW = FClamp(PendingProgressValue / MaxProgressValue,0.f,1.f) * (BarW-8.f);
+	}
+	else FillW = 0.f;
+	if (PendingFillW>FillW)
+	{
+		Canvas.SetPos(BarX+4.f+FillW,BarY+4.f);
+		Canvas.SetDrawColor(150,98,220,210);
+		Owner.CurrentStyle.DrawWhiteBox(PendingFillW-FillW,BarH-8.f);
+	}
+	if (FillW>0.f)
+	{
+		Canvas.SetPos(BarX+4.f,BarY+4.f);
+		Canvas.SetDrawColor(34,205,92,255);
+		Owner.CurrentStyle.DrawWhiteBox(FillW,BarH-8.f);
+	}
+
+	ValueText = ChopExtraDigits(VisibleProgressPercent)$"%";
+	Canvas.Font = Owner.CurrentStyle.PickFont(Max(Owner.CurrentStyle.DefaultFontSize-2,0),TS);
+	Canvas.TextSize(ValueText,XL,YL,TS,TS);
+	Canvas.SetPos(BarX+FMax((BarW-XL)*0.5,2.f),(CompPos[3]-YL)*0.5f);
+	Canvas.SetDrawColor(215,210,225,255);
+	Canvas.DrawText(ValueText,,TS,TS);
+
+	CostButton.SetPosition(0.32,0.05,0.095,0.90);
+	CostButton.ChangeToolTip(GetStatToolTip(MyPerk.PerkStats[StatIndex].StatType, ProgressValue, PendingProgressValue, MaxProgressValue, PendingAmount));
+	if (StatTitleHotspot != None)
+		StatTitleHotspot.ChangeToolTip(GetStatToolTip(MyPerk.PerkStats[StatIndex].StatType, ProgressValue, PendingProgressValue, MaxProgressValue, PendingAmount));
+}
+
+function UpdateStepInfo()
+{
+	local ExtPlayerController PC;
+	local int StepAmount, RemainingValue, AffordableValue, BuyStep, PendingAmount, PendingCost, AvailableSP, CostPerValue;
+
+	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length)
+		return;
+
+	StepAmount = Max(MyPerk.StatBuyStep,1);
+	PC = ExtPlayerController(GetPlayer());
+	if (PC!=None)
+	{
+		PendingAmount = PC.GetPendingStatBuyAmount(MyPerk.Class,StatIndex);
+		PendingCost = PC.GetPendingStatBuyCost(MyPerk.Class);
+	}
+	CostPerValue = Max(MyPerk.PerkStats[StatIndex].CostPerValue,1);
+	AvailableSP = Max(MyPerk.CurrentSP-PendingCost,0);
+	RemainingValue = Max(MyPerk.PerkStats[StatIndex].MaxValue-MyPerk.PerkStats[StatIndex].CurrentValue-PendingAmount,0);
+	if (MyPerk.PerkStats[StatIndex].CostPerValue<=0)
+		AffordableValue = RemainingValue;
 	else
-		CurrentCost = 0;
+		AffordableValue = AvailableSP/CostPerValue;
+
+	BuyStep = Min(StepAmount,RemainingValue);
+	CurrentBuyAmount = Min(BuyStep,AffordableValue);
+	CurrentCost = CurrentBuyAmount*CostPerValue;
 	MaxStatValue = MyPerk.PerkStats[StatIndex].MaxValue;
-	ProgressStr = ChopExtraDigits(MyPerk.PerkStats[StatIndex].Progress * StatCountBox.GetValueInt());
+	ProgressStr = ChopExtraDigits(MyPerk.PerkStats[StatIndex].Progress * CurrentBuyAmount);
 	MaxStatValue = MyPerk.PerkStats[StatIndex].MaxValue;
-	bCostDirty = true;
-	Timer();
+	CostButton.SetDisabled(CurrentBuyAmount<=0);
+	if (CurrentCost>0)
+		CostButton.ButtonText = string(CurrentCost);
+	else CostButton.ButtonText = "-";
 }
 
 final function CheckBuyLimit()
 {
-	local int i;
+	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length)
+		return;
 
-	i = Max(Min(MyPerk.CurrentSP/MyPerk.PerkStats[StatIndex].CostPerValue,MyPerk.PerkStats[StatIndex].MaxValue-MyPerk.PerkStats[StatIndex].CurrentValue),0);
-	StatCountBox.MaxValue = i;
-	if (i==0)
-		StatCountBox.MinValue = 0;
-	else StatCountBox.MinValue = 1;
+	UpdateStepInfo();
+}
 
-	// Make the value clamped.
-	StatCountBox.ChangeValue(StatCountBox.Value);
-	if (MyPerk.PerkStats[StatIndex].CostPerValue > 1)
-		CurrentCost = StatCountBox.GetValueInt()*MyPerk.PerkStats[StatIndex].CostPerValue;
-	else
-		CurrentCost = 0;
-	ProgressStr = ChopExtraDigits(MyPerk.PerkStats[StatIndex].Progress * StatCountBox.GetValueInt());
-	MaxStatValue = MyPerk.PerkStats[StatIndex].MaxValue;
+final function string GetShortStatName(name StatType)
+{
+	switch (StatType)
+	{
+	case 'Speed':
+		return "Movement";
+	case 'Damage':
+		return "Damage";
+	case 'Recoil':
+		return "Recoil";
+	case 'Spread':
+		return "Spread";
+	case 'Rate':
+		return "Rate of Fire";
+	case 'Reload':
+		return "Reload";
+	case 'Health':
+		return "Health";
+	case 'Armor':
+		return "Armor";
+	case 'KnockDown':
+		return "Knockback";
+	case 'HeadDamage':
+		return "Headshot";
+	case 'Mag':
+		return "Magazine";
+	case 'Spare':
+		return "Spare Ammo";
+	case 'OffDamage':
+		return "Off-Perk";
+	case 'AllDmg':
+		return "ZedsD Reduc";
+	case 'HealRecharge':
+		return "Syringe";
+	case 'Switch':
+		return "WeaponSwap";
+	case 'BossDamageReduction':
+		return "BossD Reduc";
+	case 'EliteDamageReduction':
+		return "EliteD Reduc";
+	}
+	return string(StatType);
+}
 
-	// Disable button if can not buy anymore.
-	AddButton.SetDisabled(i==0);
-	bCostDirty = true;
-	Timer();
+final function string GetStatDescription(name StatType)
+{
+	switch (StatType)
+	{
+	case 'Speed':
+		return "Increases player movement speed.";
+	case 'Damage':
+		return "Increases damage dealt with this perk's weapons.";
+	case 'Recoil':
+		return "Reduces weapon recoil for steadier fire.";
+	case 'Spread':
+		return "Tightens weapon spread and improves accuracy.";
+	case 'Rate':
+		return "Increases weapon fire rate.";
+	case 'Reload':
+		return "Increases reload speed.";
+	case 'Health':
+		return "Increases maximum player health.";
+	case 'Armor':
+		return "Increases maximum armor.";
+	case 'KnockDown':
+		return "Improves knockdown and stumble power.";
+	case 'HeadDamage':
+		return "Increases headshot damage.";
+	case 'Mag':
+		return "Increases magazine capacity.";
+	case 'Spare':
+		return "Increases spare ammo capacity.";
+	case 'OffDamage':
+		return "Increases damage with off-perk weapons.";
+	case 'AllDmg':
+		return "Gives the player damage reduction against zeds.";
+	case 'HealRecharge':
+		return "Improves syringe recharge and healing uptime.";
+	case 'Switch':
+		return "Increases weapon swap speed.";
+	case 'BossDamageReduction':
+		return "Gives the player damage reduction against bosses.";
+	case 'EliteDamageReduction':
+		return "Gives the player damage reduction against elite zeds.";
+	case 'FireDmg':
+		return "Reduces incoming fire damage.";
+	case 'SonicDmg':
+		return "Reduces incoming sonic damage.";
+	case 'PoisonDmg':
+		return "Reduces incoming poison damage.";
+	}
+	return "Improves this RPG stat.";
+}
+
+final function string GetStatToolTip(name StatType, float ProgressValue, float PendingProgressValue, float MaxProgressValue, int PendingAmount)
+{
+	local string S;
+
+	S = GetShortStatName(StatType)$": "$GetStatDescription(StatType)
+		$"|Current: "$MyPerk.PerkStats[StatIndex].CurrentValue$" / "$MyPerk.PerkStats[StatIndex].MaxValue$" points"
+		$"|Effect: "$ChopExtraDigits(ProgressValue)$"% / "$ChopExtraDigits(MaxProgressValue)$"%";
+	if (PendingAmount>0)
+		S $= "|Queued: +"$PendingAmount$" point(s), preview "$ChopExtraDigits(PendingProgressValue)$"%";
+	return S;
 }
 
 final function string ChopExtraDigits(float Value)
 {
+	local int Rounded, Whole, Dec;
 	local string S;
-	local bool bLoop;
 
-	S = string(Abs(Value));
-	bLoop = true;
-
-	// Chop off float digits that aren't needed.
-	while (bLoop)
+	Rounded = int(Abs(Value) * 100.f + 0.5f);
+	Whole = Rounded / 100;
+	Dec = Rounded - (Whole * 100);
+	S = string(Whole);
+	if (Dec > 0)
 	{
-		switch (Right(S,1))
-		{
-		case "0":
-			S = Left(S,Len(S)-1);
-			break;
-		case ".":
-			S = Left(S,Len(S)-1);
-			bLoop = false;
-			break;
-		default:
-			bLoop = false;
-		}
+		if ((Dec % 10) == 0)
+			S $= "."$string(Dec / 10);
+		else if (Dec < 10)
+			S $= ".0"$string(Dec);
+		else S $= "."$string(Dec);
 	}
+
 	return S;
 }
 
 defaultproperties
 {
-	Begin Object Class=KFGUI_TextLable Name=InfoLable
-		ID="Info"
-		XPosition=0
-		YPosition=0.2
-		XSize=0.71
-		YSize=0.7
-		AlignX=2
-		AlignY=1
-		TextFontInfo=(bClipText=true)
-	End Object
-	Begin Object Class=KFGUI_NumericBox Name=BuyCount
-		ID="CountBox"
-		XPosition=0.72
-		YPosition=0.1
-		XSize=0.18
-		YSize=0.8
-		OnTextChange=EditBoxChange
-		MaxValue=100
-		MinValue=1
-		bScaleByFontSize=false
-	End Object
-	Begin Object Class=KFGUI_Button Name=AddSButton
-		ID="AddBox"
-		XPosition=0.91
-		YPosition=0.1
-		XSize=0.08
-		YSize=0.8
-		ButtonText="+"
+	Begin Object Class=KFGUI_ZvampPressButton Name=CostSButton
+		ID="CostBox"
+		XPosition=0.33
+		YPosition=0.05
+		XSize=0.11
+		YSize=0.90
+		ButtonText="-"
 		OnClickLeft=BuyStatPoint
-		OnClickRight=BuyStatPoint
+		OnClickRight=OpenBuyAmountPopup
 	End Object
 
-	Components.Add(InfoLable)
-	Components.Add(BuyCount)
-	Components.Add(AddSButton)
+	Components.Add(CostSButton)
 }

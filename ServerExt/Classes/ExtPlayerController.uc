@@ -35,6 +35,12 @@ struct FAdminCmdType
 {
 	var string Cmd,Info;
 };
+struct FPendingPerkStatBuy
+{
+	var class<Ext_PerkBase> PerkClass;
+	var int StatIndex;
+	var int Amount;
+};
 enum EDmgMsgType
 {
 	DMG_PawnDamage,
@@ -55,6 +61,17 @@ var transient byte DropCount;
 var transient Object UserAPI;
 var transient SoundCue BonusMusic;
 var transient Object BonusFX;
+var bool bRevampTraderGuardEnabled,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader;
+var bool bVampUIEndMatchEnabled;
+var bool bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup;
+var float AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue;
+var bool bZvampCameraEnabled,bZvampDisableCamShakes,bZvampDisableSprintFOVChange,bZvampDisableEarsRinging,bZvampDisableCameraAnims;
+var float ZvampZedTimeEffectReduction;
+var string SpawnedPerkUILayout,MidGameMenuLayout,ZvampextBuildID;
+var int PlayerDoshThrowAmount;
+var transient array<FPendingPerkStatBuy> PendingStatBuys;
+var transient array<string> ZvampextClientTraderItems;
+var transient byte ZvampextSettingsSyncRetries;
 
 // Stats
 var transient byte TransitListNum;
@@ -69,6 +86,11 @@ var transient bool bEndGameCamFocus;
 var globalconfig bool bShowFPLegs,bHideNameBeacons,bHideKillMsg,bHideDamageMsg,bHideNumberMsg,bNoMonsterPlayer,bNoScreenShake,bRenderModes,bUseKF2DeathMessages,bUseKF2KillMessages;
 var globalconfig int SelectedEmoteIndex;
 var bool bMOTDReceived,bNamePlateShown,bNamePlateHidden,bClientHideKillMsg,bClientHideDamageMsg,bClientHideNumbers,bNoDamageTracking,bClientNoZed,bSetPerk;
+var bool bRevampTestCheatsEnabled;
+var transient bool bRevampGodMode;
+var transient bool bVampUIClosedForEndGame;
+var transient int LastZvampextStockPerkIndex,LastZvampextStockPerkLevel,ZvampextClientTraderFilterIndex;
+var transient class<KFPerk> LastZvampextStockPerkClass;
 
 struct SavedSkins
 {
@@ -81,7 +103,9 @@ replication
 {
 	// Things the server should send to the client.
 	if (bNetDirty)
-		MidGameMenuClass,ActivePerkManager;
+		MidGameMenuClass,ActivePerkManager,bRevampTraderGuardEnabled,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader,
+		bVampUIEndMatchEnabled,bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup,
+		AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue;
 }
 
 simulated function PostBeginPlay()
@@ -96,6 +120,11 @@ simulated function PostBeginPlay()
 			ActivePerkManager.PRIOwner.PerkManager = ActivePerkManager;
 		SetTimer(0.1,true,'CheckPerk');
 	}
+	else if (WorldInfo.NetMode==NM_Client)
+	{
+		ZvampextSettingsSyncRetries = 8;
+		SetTimer(0.25,true,'ZvampextClientUISyncTimer');
+	}
 }
 
 simulated function Destroyed()
@@ -107,20 +136,359 @@ simulated function Destroyed()
 		ActivePerkManager.Destroy();
 }
 
-function CheckPerk()
+final function int GetZvampextBasePerkIndex(class<KFPerk> BasePerk)
 {
-	if (CurrentPerk != ActivePerkManager)
+	local int i;
+
+	if (BasePerk == None)
+		return 0;
+
+	for (i=0; i<PerkList.Length; ++i)
+		if (PerkList[i].PerkClass == BasePerk)
+			return i;
+
+	if (BasePerk == class'KFPerk_Berserker') return 0;
+	if (BasePerk == class'KFPerk_Commando') return 1;
+	if (BasePerk == class'KFPerk_Support') return 2;
+	if (BasePerk == class'KFPerk_FieldMedic') return 3;
+	if (BasePerk == class'KFPerk_Demolitionist') return 4;
+	if (BasePerk == class'KFPerk_Firebug') return 5;
+	if (BasePerk == class'KFPerk_Gunslinger') return 6;
+	if (BasePerk == class'KFPerk_Sharpshooter') return 7;
+	if (BasePerk == class'KFPerk_SWAT') return 8;
+	if (BasePerk == class'KFPerk_Survivalist') return 9;
+
+	return 0;
+}
+
+function SyncZvampextPerkToStock()
+{
+	local KFPlayerReplicationInfo KFPRI;
+	local Ext_PerkBase ActivePerk;
+	local int PerkIndex;
+
+	KFPRI = KFPlayerReplicationInfo(PlayerReplicationInfo);
+	if (KFPRI == None || ActivePerkManager == None || ActivePerkManager.CurrentPerk == None)
+		return;
+
+	ActivePerk = ActivePerkManager.CurrentPerk;
+	PerkIndex = GetZvampextBasePerkIndex(ActivePerk.BasePerk);
+	KFPRI.NetPerkIndex = PerkIndex;
+	KFPRI.CurrentPerkClass = ActivePerk.BasePerk;
+	if (PerkIndex >= 0 && PerkIndex < PerkList.Length)
+		PerkList[PerkIndex].PerkLevel = ActivePerk.CurrentLevel;
+	KFPRI.bForceNetUpdate = true;
+
+	if (LastZvampextStockPerkIndex != PerkIndex
+		|| LastZvampextStockPerkLevel != ActivePerk.CurrentLevel
+		|| LastZvampextStockPerkClass != ActivePerk.BasePerk)
+	{
+		LastZvampextStockPerkIndex = PerkIndex;
+		LastZvampextStockPerkLevel = ActivePerk.CurrentLevel;
+		LastZvampextStockPerkClass = ActivePerk.BasePerk;
+		ClientSyncZvampextPerkToStock(ActivePerk.BasePerk, PerkIndex, ActivePerk.CurrentLevel);
+	}
+}
+
+reliable client function ClientSyncZvampextPerkToStock(class<KFPerk> BasePerk, int PerkIndex, int PerkLevel)
+{
+	local KFPlayerReplicationInfo KFPRI;
+
+	KFPRI = KFPlayerReplicationInfo(PlayerReplicationInfo);
+	if (KFPRI != None && BasePerk != None)
+	{
+		KFPRI.NetPerkIndex = PerkIndex;
+		KFPRI.CurrentPerkClass = BasePerk;
+		KFPRI.bForceNetUpdate = true;
+	}
+	if (PerkIndex >= 0 && PerkIndex < PerkList.Length)
+	{
+		PerkList[PerkIndex].PerkLevel = PerkLevel;
+	}
+	PatchZvampextStockTraderPerkInfo();
+	`log("[Zvamp] client synced stock perk: class="$BasePerk@"index="$PerkIndex@"level="$PerkLevel);
+}
+
+simulated function ZvampextClientUISyncTimer()
+{
+	CheckVampUIEndMatchHandoff();
+	if (ZvampextSettingsSyncRetries > 0)
+	{
+		SendServerSettings();
+		--ZvampextSettingsSyncRetries;
+	}
+	if (ActivePerkManager != None && CurrentPerk != ActivePerkManager)
 	{
 		CurrentPerk = ActivePerkManager;
-		if (KFPlayerReplicationInfo(PlayerReplicationInfo)!=None)
+	}
+	SyncZvampextClientPerkListLevels();
+	SyncZvampextStockCurrentPerk();
+	RefreshZvampextStockTraderPerkSelection();
+	PatchZvampextStockTraderPerkInfo();
+	ApplyZvampCameraSettings();
+}
+
+simulated final function bool IsVampUIEndMatchState()
+{
+	local KFGameReplicationInfo KFGRI;
+
+	if (WorldInfo == None)
+		return false;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	return (WorldInfo.Game != None && WorldInfo.Game.bGameEnded)
+		|| (KFGRI != None && KFGRI.bMatchIsOver);
+}
+
+simulated final function bool ShouldBlockVampUIForEndMatch()
+{
+	return bVampUIEndMatchEnabled && IsVampUIEndMatchState();
+}
+
+simulated final function CheckVampUIEndMatchHandoff()
+{
+	local KF2GUIController GUIController;
+
+	if (!ShouldBlockVampUIForEndMatch())
+	{
+		bVampUIClosedForEndGame = false;
+		return;
+	}
+	if (bVampUIClosedForEndGame)
+		return;
+
+	SyncZvampextClientPerkListLevels();
+	SyncZvampextStockCurrentPerk();
+	PatchZvampextStockTraderPerkInfo();
+	bVampUIClosedForEndGame = true;
+	GUIController = class'KF2GUIController'.Static.GetGUIController(Self);
+	if (GUIController != None)
+		GUIController.CloseMenu(None, true);
+}
+
+reliable client function ClientSetVampUIEndMatchEnabled(bool bEnabled)
+{
+	bVampUIEndMatchEnabled = bEnabled;
+	ZvampextSettingsSyncRetries = Max(ZvampextSettingsSyncRetries, 4);
+	CheckVampUIEndMatchHandoff();
+}
+
+reliable client function ClientRefreshZvampextSettings()
+{
+	ZvampextSettingsSyncRetries = Max(ZvampextSettingsSyncRetries, 12);
+	SendServerSettings();
+}
+
+reliable server function ZvampextRequestPerkReplication()
+{
+	if (ActivePerkManager!=None)
+	{
+		ActivePerkManager.bForceNetUpdate = true;
+		bForceNetUpdate = true;
+		ActivePerkManager.ZvampextKickClientReplication(true);
+	}
+}
+
+simulated final function Ext_PerkBase ResolveZvampextClientActivePerk()
+{
+	local ExtPlayerReplicationInfo EPRI;
+	local int i;
+
+	if (ActivePerkManager == None)
+	{
+		return None;
+	}
+
+	if (ActivePerkManager.CurrentPerk != None)
+	{
+		return ActivePerkManager.CurrentPerk;
+	}
+
+	EPRI = ExtPlayerReplicationInfo(PlayerReplicationInfo);
+	if (EPRI != None && EPRI.ECurrentPerk != None)
+	{
+		for (i=0; i<ActivePerkManager.UserPerks.Length; ++i)
 		{
-			KFPlayerReplicationInfo(PlayerReplicationInfo).NetPerkIndex = 0;
-			if (ActivePerkManager.CurrentPerk != None)
+			if (ActivePerkManager.UserPerks[i] != None
+				&& ActivePerkManager.UserPerks[i].Class == EPRI.ECurrentPerk)
 			{
-				KFPlayerReplicationInfo(PlayerReplicationInfo).CurrentPerkClass = ActivePerkManager.CurrentPerk.BasePerk;
+				ActivePerkManager.CurrentPerk = ActivePerkManager.UserPerks[i];
+				return ActivePerkManager.CurrentPerk;
 			}
 		}
 	}
+
+	return None;
+}
+
+simulated final function SyncZvampextStockCurrentPerk()
+{
+	local Ext_PerkBase ActivePerk;
+	local int PerkIndex;
+
+	ActivePerk = ResolveZvampextClientActivePerk();
+	if (ActivePerk == None || ActivePerk.BasePerk == None)
+	{
+		return;
+	}
+
+	PerkIndex = GetZvampextBasePerkIndex(ActivePerk.BasePerk);
+	if (PerkIndex >= 0 && PerkIndex < PerkList.Length)
+	{
+		PerkList[PerkIndex].PerkClass = ActivePerk.BasePerk;
+		PerkList[PerkIndex].PerkLevel = ActivePerk.CurrentLevel;
+	}
+	if (KFPlayerReplicationInfo(PlayerReplicationInfo) != None)
+	{
+		KFPlayerReplicationInfo(PlayerReplicationInfo).NetPerkIndex = PerkIndex;
+		KFPlayerReplicationInfo(PlayerReplicationInfo).CurrentPerkClass = ActivePerk.BasePerk;
+		KFPlayerReplicationInfo(PlayerReplicationInfo).bForceNetUpdate = true;
+	}
+}
+
+simulated final function int GetZvampextActiveTraderPerkIndex()
+{
+	local Ext_PerkBase ActivePerk;
+
+	ActivePerk = ResolveZvampextClientActivePerk();
+	if (ActivePerkManager == None || ActivePerk == None)
+	{
+		return 0;
+	}
+	return Max(ActivePerkManager.UserPerks.Find(ActivePerk), 0);
+}
+
+simulated final function int GetZvampextTraderFilterIndex()
+{
+	if (ActivePerkManager == None)
+	{
+		return 0;
+	}
+
+	if (ZvampextClientTraderFilterIndex >= 0
+		&& ZvampextClientTraderFilterIndex <= ActivePerkManager.UserPerks.Length)
+	{
+		return ZvampextClientTraderFilterIndex;
+	}
+
+	return GetZvampextActiveTraderPerkIndex();
+}
+
+simulated final function bool SetZvampextClientTraderFilterIndex(int FilterIndex)
+{
+	if (ActivePerkManager == None || FilterIndex < 0 || FilterIndex > ActivePerkManager.UserPerks.Length)
+	{
+		return false;
+	}
+
+	ZvampextClientTraderFilterIndex = FilterIndex;
+	return true;
+}
+
+simulated final function bool SetZvampextClientTraderPerkIndex(int PerkIndex)
+{
+	if (ActivePerkManager == None || PerkIndex < 0 || PerkIndex >= ActivePerkManager.UserPerks.Length
+		|| ActivePerkManager.UserPerks[PerkIndex] == None)
+	{
+		return false;
+	}
+
+	ZvampextClientTraderFilterIndex = PerkIndex;
+	ActivePerkManager.CurrentPerk = ActivePerkManager.UserPerks[PerkIndex];
+	SyncZvampextStockCurrentPerk();
+	PatchZvampextStockTraderPerkInfo();
+	return true;
+}
+
+simulated final function RefreshZvampextStockTraderPerkSelection()
+{
+	local int PerkIndex;
+
+	if (MyGFxManager == None || MyGFxManager.TraderMenu == None)
+	{
+		return;
+	}
+
+	PerkIndex = GetZvampextTraderFilterIndex();
+	MyGFxManager.TraderMenu.OnPerkChanged(PerkIndex);
+	MyGFxManager.TraderMenu.RefreshItemComponents();
+}
+
+simulated final function SyncZvampextClientPerkListLevels()
+{
+	local int i;
+	local int PerkIndex;
+	local Ext_PerkBase P;
+
+	if (ActivePerkManager == None)
+	{
+		return;
+	}
+
+	for (i=0; i<ActivePerkManager.UserPerks.Length; ++i)
+	{
+		P = ActivePerkManager.UserPerks[i];
+		if (P == None || P.BasePerk == None)
+		{
+			continue;
+		}
+
+		PerkIndex = GetZvampextBasePerkIndex(P.BasePerk);
+		if (PerkIndex >= 0 && PerkIndex < PerkList.Length)
+		{
+			PerkList[PerkIndex].PerkLevel = P.CurrentLevel;
+		}
+	}
+}
+
+simulated final function PatchZvampextStockTraderPerkInfo()
+{
+	local Ext_PerkBase ActivePerk;
+	local KFGFxTraderContainer_PlayerInfo PlayerInfo;
+	local GFxObject PerkIconObject;
+	local float XPPercent;
+	local string IconPath;
+
+	if (ActivePerkManager == None
+		|| MyGFxManager == None || MyGFxManager.TraderMenu == None
+		|| MyGFxManager.TraderMenu.PlayerInfoContainer == None)
+	{
+		return;
+	}
+
+	ActivePerk = ResolveZvampextClientActivePerk();
+	if (ActivePerk == None)
+	{
+		return;
+	}
+
+	PlayerInfo = MyGFxManager.TraderMenu.PlayerInfoContainer;
+	IconPath = ActivePerk.GetPerkIconPath(ActivePerk.CurrentLevel);
+	PlayerInfo.SetString("perkName", ActivePerk.PerkName);
+	PlayerInfo.SetString("perkIconPath", IconPath);
+	PlayerInfo.SetString("perkIconSource", IconPath);
+	PlayerInfo.SetString("iconPath", IconPath);
+	PlayerInfo.SetString("iconSource", IconPath);
+	PlayerInfo.SetString("source", IconPath);
+	PerkIconObject = MyGFxManager.CreateObject("Object");
+	if (PerkIconObject != None)
+	{
+		PerkIconObject.SetString("perkIcon", IconPath);
+		PerkIconObject.SetString("source", IconPath);
+		PerkIconObject.SetString("iconSource", IconPath);
+		PlayerInfo.SetObject("perkImageSource", PerkIconObject);
+		PlayerInfo.SetObject("perkIconObject", PerkIconObject);
+	}
+	PlayerInfo.SetInt("perkLevel", ActivePerk.CurrentLevel);
+	XPPercent = ActivePerk.GetProgressPercent() * 100.f;
+	PlayerInfo.SetInt("xpBarValue", int(XPPercent));
+}
+
+function CheckPerk()
+{
+	if (CurrentPerk != ActivePerkManager)
+		CurrentPerk = ActivePerkManager;
+	SyncZvampextPerkToStock();
 }
 
 reliable client function AddAdminCmd(string S)
@@ -352,6 +720,9 @@ unreliable client function ClientNumberMsg(int Count, vector Pos, EDmgMsgType Ty
 
 reliable client event TeamMessage(PlayerReplicationInfo PRI, coerce string S, name Type, optional float MsgLifeTime )
 {
+	local string OriginalMessage;
+
+	OriginalMessage = S;
 	//if (((Type == 'Say') || (Type == 'TeamSay')) && (PRI != None))
 	//	SpeakTTS(S, PRI); <- KF built without TTS...
 
@@ -366,10 +737,13 @@ reliable client event TeamMessage(PlayerReplicationInfo PRI, coerce string S, na
 	if (MyGFxManager != none && MyGFxManager.PartyWidget != none)
 	{
 		if (!MyGFxManager.PartyWidget.ReceiveMessage(S))  //Fails if message is for updating perks in a steam lobby
-			return;
+		{
+			if (Type != 'Say' && Type != 'TeamSay')
+				return;
+		}
 	}
 
-	if (MyGFxHUD != none)
+	if (MyGFxHUD != none && MyGFxHUD.HudChatBox != none)
 	{
 		switch (Type)
 		{
@@ -403,6 +777,7 @@ reliable client event TeamMessage(PlayerReplicationInfo PRI, coerce string S, na
 			MyGFxHUD.HudChatBox.AddChatMessage(class'KFLocalMessage'.default.SystemString@S, class 'KFLocalMessage'.default.EventColor);
 		}
 	}
+	else Super.TeamMessage(PRI,OriginalMessage,Type,MsgLifeTime);
 }
 
 final function PopScreenMsg(string S)
@@ -611,6 +986,146 @@ reliable server function BuyPerkStat(class<Ext_PerkBase> PerkClass, int iStat, i
 		OnBoughtStats(Self,PerkClass,iStat,Amount);
 }
 
+simulated final function Ext_PerkBase FindClientPerk(class<Ext_PerkBase> PerkClass)
+{
+	local int i;
+
+	if (ActivePerkManager==None || PerkClass==None)
+		return None;
+
+	for (i=0; i<ActivePerkManager.UserPerks.Length; ++i)
+		if (ActivePerkManager.UserPerks[i]!=None && ActivePerkManager.UserPerks[i].Class==PerkClass)
+			return ActivePerkManager.UserPerks[i];
+	return None;
+}
+
+simulated final function int FindPendingStatBuy(class<Ext_PerkBase> PerkClass, int iStat)
+{
+	local int i;
+
+	for (i=0; i<PendingStatBuys.Length; ++i)
+		if (PendingStatBuys[i].PerkClass==PerkClass && PendingStatBuys[i].StatIndex==iStat)
+			return i;
+	return -1;
+}
+
+simulated final function int GetPendingStatBuyAmount(class<Ext_PerkBase> PerkClass, int iStat)
+{
+	local int i;
+
+	i = FindPendingStatBuy(PerkClass,iStat);
+	if (i>=0)
+		return PendingStatBuys[i].Amount;
+	return 0;
+}
+
+simulated final function int GetPendingStatBuyCost(class<Ext_PerkBase> PerkClass)
+{
+	local Ext_PerkBase P;
+	local int i,Cost;
+
+	P = FindClientPerk(PerkClass);
+	if (P==None)
+		return 0;
+
+	for (i=0; i<PendingStatBuys.Length; ++i)
+	{
+		if (PendingStatBuys[i].PerkClass!=PerkClass)
+			continue;
+		if (PendingStatBuys[i].StatIndex<0 || PendingStatBuys[i].StatIndex>=P.PerkStats.Length)
+			continue;
+		Cost += PendingStatBuys[i].Amount * Max(P.PerkStats[PendingStatBuys[i].StatIndex].CostPerValue,1);
+	}
+	return Cost;
+}
+
+simulated final function int GetPendingStatBuyCount(class<Ext_PerkBase> PerkClass)
+{
+	local int i,Count;
+
+	for (i=0; i<PendingStatBuys.Length; ++i)
+		if (PendingStatBuys[i].PerkClass==PerkClass)
+			Count += PendingStatBuys[i].Amount;
+	return Count;
+}
+
+simulated final function QueuePerkStatBuy(class<Ext_PerkBase> PerkClass, int iStat, int Amount, optional bool bNotify)
+{
+	local Ext_PerkBase P;
+	local int PendingIndex,PendingAmount,PendingCost,CostPerValue,AvailableSP,RemainingValue,SafeAmount;
+
+	P = FindClientPerk(PerkClass);
+	if (P==None || iStat<0 || iStat>=P.PerkStats.Length || Amount<=0)
+		return;
+
+	CostPerValue = Max(P.PerkStats[iStat].CostPerValue,1);
+	PendingAmount = GetPendingStatBuyAmount(PerkClass,iStat);
+	PendingCost = GetPendingStatBuyCost(PerkClass);
+	AvailableSP = Max(P.CurrentSP-PendingCost,0);
+	RemainingValue = Max(P.PerkStats[iStat].MaxValue-P.PerkStats[iStat].CurrentValue-PendingAmount,0);
+	SafeAmount = Min(Amount,RemainingValue);
+	SafeAmount = Min(SafeAmount,AvailableSP/CostPerValue);
+	if (SafeAmount<=0)
+	{
+		ClientMessage("[Zvamp] No SP available to queue for "$string(P.PerkStats[iStat].StatType)$".",'Priority');
+		return;
+	}
+
+	PendingIndex = FindPendingStatBuy(PerkClass,iStat);
+	if (PendingIndex<0)
+	{
+		PendingIndex = PendingStatBuys.Length;
+		PendingStatBuys.Length = PendingIndex+1;
+		PendingStatBuys[PendingIndex].PerkClass = PerkClass;
+		PendingStatBuys[PendingIndex].StatIndex = iStat;
+		PendingStatBuys[PendingIndex].Amount = SafeAmount;
+	}
+	else PendingStatBuys[PendingIndex].Amount += SafeAmount;
+
+	if (bNotify)
+		ClientMessage("[Zvamp] Queued "$SafeAmount$" "$string(P.PerkStats[iStat].StatType)$" point(s). Press COMMIT SP to apply.",'Priority');
+}
+
+simulated final function CommitPendingStatBuys(class<Ext_PerkBase> PerkClass)
+{
+	local int i,Committed;
+
+	for (i=0; i<PendingStatBuys.Length; ++i)
+	{
+		if (PendingStatBuys[i].PerkClass!=PerkClass)
+			continue;
+		if (PendingStatBuys[i].Amount<=0)
+			continue;
+		BuyPerkStat(PendingStatBuys[i].PerkClass,PendingStatBuys[i].StatIndex,PendingStatBuys[i].Amount);
+		Committed += PendingStatBuys[i].Amount;
+	}
+
+	ClearPendingStatBuys(PerkClass);
+	if (Committed>0)
+		ClientMessage("[Zvamp] Committed "$Committed$" queued SP point(s).",'Priority');
+	else ClientMessage("[Zvamp] No queued SP to commit.",'Priority');
+}
+
+simulated final function ClearPendingStatBuys(class<Ext_PerkBase> PerkClass)
+{
+	local int i;
+
+	for (i=PendingStatBuys.Length-1; i>=0; --i)
+		if (PendingStatBuys[i].PerkClass==PerkClass)
+			PendingStatBuys.Remove(i,1);
+}
+
+simulated final function CancelPendingStatBuys(class<Ext_PerkBase> PerkClass, optional bool bNotify)
+{
+	local int PendingCost, PendingCount;
+
+	PendingCost = GetPendingStatBuyCost(PerkClass);
+	PendingCount = GetPendingStatBuyCount(PerkClass);
+	ClearPendingStatBuys(PerkClass);
+	if (bNotify && (PendingCost>0 || PendingCount>0))
+		ClientMessage("[Zvamp] Cancelled "$PendingCount$" queued SP point(s), returned "$PendingCost$" SP.",'Priority');
+}
+
 Delegate OnBoughtTrait(ExtPlayerController PC, class<Ext_PerkBase> PerkClass, class<Ext_TraitBase> Trait);
 
 reliable server function BoughtTrait(class<Ext_PerkBase> PerkClass, class<Ext_TraitBase> Trait)
@@ -627,11 +1142,1257 @@ reliable server function ServerResetPerk(class<Ext_PerkBase> PerkClass, bool bPr
 		OnPerkReset(Self,PerkClass,bPrestige);
 }
 
+reliable server function ServerResetCurrentClassYesImCertain()
+{
+	if (ActivePerkManager==None || ActivePerkManager.CurrentPerk==None)
+	{
+		ClientMessage("[Zvamp] Class reset failed: current perk is not ready.",'Priority');
+		return;
+	}
+
+	ClientClearPendingStatBuys(ActivePerkManager.CurrentPerk.Class);
+	OnPerkReset(Self,ActivePerkManager.CurrentPerk.Class,false);
+	ClientMessage("[Zvamp] Reset requested for "$ActivePerkManager.CurrentPerk.PerkName$".",'Priority');
+}
+
+reliable client function ClientClearPendingStatBuys(class<Ext_PerkBase> PerkClass)
+{
+	ClearPendingStatBuys(PerkClass);
+}
+
 Delegate OnAdminHandle(ExtPlayerController PC, int PlayerID, int Action);
+Delegate OnAdminRevampAction(ExtPlayerController PC, int Action);
+Delegate OnAdminSetTraderGuard(ExtPlayerController PC, bool bEnabled, bool bBlockSkip, bool bPublicOpenTrader);
+Delegate OnAdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue);
+Delegate OnAdminFastForwardTrader(ExtPlayerController PC);
+Delegate OnAdminOpenTrader(ExtPlayerController PC);
+Delegate OnPublicOpenTrader(ExtPlayerController PC);
+Delegate OnRefreshNewItems(ExtPlayerController PC);
+Delegate OnAdminGiveDosh(ExtPlayerController PC, int DoshAmount);
+Delegate OnAdminSetDoshThrowAmount(ExtPlayerController PC, int NewAmount);
+Delegate OnAdminProgressWave(ExtPlayerController PC, int WaveCount);
+Delegate OnAdminBuildID(ExtPlayerController PC);
+Delegate OnAdminSetAutoMessage(ExtPlayerController PC, bool bEnabled, int IntervalSeconds, string MessageText, string MessageColor);
+Delegate OnPlayerProgressWaveVoteCall(ExtPlayerController PC, int WaveCount);
+Delegate OnPlayerProgressWaveVoteAnswer(ExtPlayerController PC, bool bAccept);
+Delegate OnPlayerNextMapVoteAnswer(ExtPlayerController PC, bool bNextMap);
 
 reliable server function AdminRPGHandle(int PlayerID, int Action)
 {
 	OnAdminHandle(Self,PlayerID,Action);
+}
+
+reliable server function AdminRevampAction(int Action)
+{
+	OnAdminRevampAction(Self,Action);
+}
+
+reliable server function AdminSetTraderGuard(bool bEnabled, bool bBlockSkip, bool bPublicOpenTrader)
+{
+	OnAdminSetTraderGuard(Self,bEnabled,bBlockSkip,bPublicOpenTrader);
+}
+
+reliable server function AdminSetPickupOverrides(bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue)
+{
+	OnAdminSetPickupOverrides(Self,bGrenadeDamage,GrenadeDamageValue,bGrenadeRadius,GrenadeRadiusValue,bAmmoPickup,AmmoPickupValue,bItemPickup,ItemPickupValue,bArmorPickup,ArmorPickupValue);
+}
+
+reliable server function RevampAdminFastForwardTrader()
+{
+	OnAdminFastForwardTrader(Self);
+}
+
+reliable server function RevampAdminOpenTrader()
+{
+	OnAdminOpenTrader(Self);
+}
+
+reliable server function RevampPublicOpenTrader()
+{
+	OnPublicOpenTrader(Self);
+}
+
+reliable server function AdminGiveDosh(int DoshAmount)
+{
+	OnAdminGiveDosh(Self,DoshAmount);
+}
+
+reliable server function AdminSetDoshThrowAmount(int NewAmount)
+{
+	OnAdminSetDoshThrowAmount(Self,NewAmount);
+}
+
+reliable server function PlayerSetDoshThrowAmount(int NewAmount)
+{
+	local ExtInventoryManager IM;
+	local int SafeAmount;
+
+	SafeAmount = Clamp(NewAmount, 1, 1000000);
+	PlayerDoshThrowAmount = SafeAmount;
+	if (Pawn != None)
+		IM = ExtInventoryManager(Pawn.InvManager);
+	if (IM == None)
+	{
+		ClientMessage("[Zvamp] DoshThrowAmount will apply after you spawn.", 'Priority');
+		return;
+	}
+
+	IM.SetDoshThrowAmount(SafeAmount);
+	ClientMessage("[Zvamp] DoshThrowAmount set to "$SafeAmount$".", 'Priority');
+	`log("[Zvamp] player "$PlayerReplicationInfo.PlayerName$" set DoshThrowAmount to "$SafeAmount);
+}
+
+function ApplyPlayerDoshThrowAmount()
+{
+	local ExtInventoryManager IM;
+
+	if (PlayerDoshThrowAmount <= 0 || Pawn == None)
+		return;
+
+	IM = ExtInventoryManager(Pawn.InvManager);
+	if (IM != None)
+		IM.SetDoshThrowAmount(PlayerDoshThrowAmount);
+}
+
+reliable server function AdminProgressWave(int WaveCount)
+{
+	OnAdminProgressWave(Self,WaveCount);
+}
+
+reliable server function PlayerProgressWaveVoteCall(int WaveCount)
+{
+	OnPlayerProgressWaveVoteCall(Self,WaveCount);
+}
+
+reliable server function PlayerProgressWaveVoteAnswer(bool bAccept)
+{
+	OnPlayerProgressWaveVoteAnswer(Self,bAccept);
+}
+
+reliable server function PlayerNextMapVoteAnswer(bool bNextMap)
+{
+	OnPlayerNextMapVoteAnswer(Self,bNextMap);
+}
+
+reliable server function AdminBuildID()
+{
+	OnAdminBuildID(Self);
+}
+
+reliable server function AdminSetAutoMessage(bool bEnabled, int IntervalSeconds, string MessageText, string MessageColor)
+{
+	OnAdminSetAutoMessage(Self,bEnabled,IntervalSeconds,MessageText,MessageColor);
+}
+
+reliable client function ClientZvampextAutoMessage(string MessageText, string MessageColor)
+{
+	if (MyGFxHUD!=None && MyGFxHUD.HudChatBox!=None)
+		MyGFxHUD.HudChatBox.AddChatMessage(MessageText,MessageColor);
+	else ClientMessage(MessageText,'Event');
+}
+
+reliable client function ClientOpenProgressWaveVote(string CallerName, int WaveCount, int Seconds)
+{
+	local UI_PlayerProgressWaveVote Menu;
+
+	Menu = UI_PlayerProgressWaveVote(class'KF2GUIController'.Static.GetGUIController(Self).OpenMenu(class'UI_PlayerProgressWaveVote'));
+	if (Menu!=None)
+		Menu.InitVote(CallerName,WaveCount,Seconds);
+}
+
+reliable client function ClientOpenNextMapVote(int WaveNum, int Seconds)
+{
+	local UI_PlayerNextMapVote Menu;
+
+	Menu = UI_PlayerNextMapVote(class'KF2GUIController'.Static.GetGUIController(Self).OpenMenu(class'UI_PlayerNextMapVote'));
+	if (Menu!=None)
+		Menu.InitVote(WaveNum,Seconds);
+}
+
+simulated final function bool ShouldKeepChatDuringBossCinematic()
+{
+	local KFGameReplicationInfo KFGRI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	return bCinematicMode
+		&& ((PlayerCamera!=None && PlayerCamera.CameraStyle=='Boss')
+			|| IsBossCameraMode()
+			|| GetBoss()!=None
+			|| (KFGRI!=None && KFGRI.IsBossWave()));
+}
+
+reliable client function ClientSetIgnoreButtons(bool bAffectsButtons)
+{
+	local KFGFxHudWrapper GFxHUDWrapper;
+	local bool bKeepChat;
+
+	bKeepChat = bAffectsButtons && ShouldKeepChatDuringBossCinematic();
+	if (bAffectsButtons && MyGFxManager!=None && !bKeepChat)
+		MyGFxManager.CloseMenus();
+
+	GFxHUDWrapper = KFGFxHudWrapper(myHUD);
+	if (GFxHUDWrapper!=None && GFxHUDWrapper.HudMovie!=None)
+	{
+		if (bAffectsButtons && !bKeepChat && GFxHUDWrapper.HudMovie.HudChatBox!=None)
+			GFxHUDWrapper.HudMovie.HudChatBox.ClearAndCloseChat();
+
+		GFxHUDWrapper.HudMovie.EatMyInput(bAffectsButtons && !bKeepChat);
+	}
+}
+
+reliable client function ClientSetRevampTraderGuard(bool bEnabled, bool bBlockSkip, bool bPublicOpenTrader)
+{
+	bRevampTraderGuardEnabled = bEnabled;
+	bRevampTraderGuardBlockSkip = bBlockSkip;
+	bRevampTraderGuardPublicOpenTrader = bPublicOpenTrader;
+}
+
+reliable client function ClientSetAdminPickupOverrides(bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue)
+{
+	bAdminGrenadeDamage = bGrenadeDamage;
+	AdminGrenadeDamageValue = GrenadeDamageValue;
+	bAdminGrenadeRadius = bGrenadeRadius;
+	AdminGrenadeRadiusValue = GrenadeRadiusValue;
+	bAdminAmmoPickup = bAmmoPickup;
+	AdminAmmoPickupValue = AmmoPickupValue;
+	bAdminItemPickup = bItemPickup;
+	AdminItemPickupValue = ItemPickupValue;
+	bAdminArmorPickup = bArmorPickup;
+	AdminArmorPickupValue = ArmorPickupValue;
+}
+
+reliable client function ClientSetZvampCamera(bool bEnabled, bool bDisableShakes, bool bDisableSprintFOV, bool bDisableRinging, bool bDisableAnims, float ZedReduction)
+{
+	bZvampCameraEnabled = bEnabled;
+	bZvampDisableCamShakes = bDisableShakes;
+	bZvampDisableSprintFOVChange = bDisableSprintFOV;
+	bZvampDisableEarsRinging = bDisableRinging;
+	bZvampDisableCameraAnims = bDisableAnims;
+	ZvampZedTimeEffectReduction = FClamp(ZedReduction,0.f,1.f);
+}
+
+simulated function ApplyZvampCameraSettings()
+{
+	local MaterialInstanceConstant WorldMIC;
+	local float MaxEffect;
+
+	if (!bZvampCameraEnabled)
+		return;
+
+	if (bZvampDisableCamShakes && PlayerCamera!=None && PlayerCamera.CameraShakeCamMod!=None)
+		PlayerCamera.CameraShakeCamMod.DisableModifier(true);
+
+	if (bZvampDisableEarsRinging)
+		EarsRingingPlayEvent = EarsRingingStopEvent;
+
+	MaxEffect = 1.f - FClamp(ZvampZedTimeEffectReduction,0.f,1.f);
+	if (TargetZEDTimeEffectIntensity > MaxEffect)
+		TargetZEDTimeEffectIntensity = MaxEffect;
+	if (CurrentZEDTimeEffectIntensity > MaxEffect)
+	{
+		CurrentZEDTimeEffectIntensity = MaxEffect;
+		ZEDTimeEffectInterpTimeRemaining = 0.f;
+		if (GameplayPostProcessEffectMIC!=None)
+			GameplayPostProcessEffectMIC.SetScalarParameterValue(EffectZedTimeParamName,CurrentZEDTimeEffectIntensity);
+		foreach WorldInfo.ZedTimeMICs(WorldMIC)
+			if (WorldMIC!=None)
+				WorldMIC.SetScalarParameterValue(EffectZedTimeParamName,CurrentZEDTimeEffectIntensity);
+	}
+
+	if (Pawn!=None && KFWeapon(Pawn.Weapon)!=None)
+		ApplyZvampCameraWeaponSettings(KFWeapon(Pawn.Weapon));
+}
+
+simulated function ApplyZvampCameraWeaponSettings(KFWeapon W)
+{
+	local AnimSet WeaponAnimSet;
+	local AnimSequence WeaponAnimSequence;
+	local KFAnimNotify_CameraAnim WeaponAnimNotify;
+	local int i;
+
+	if (W==None)
+		return;
+
+	if (bZvampDisableSprintFOVChange)
+		W.PlayerSprintFOV = DefaultFOV;
+
+	if (!bZvampDisableCameraAnims || W.MySkelMesh==None)
+		return;
+
+	foreach W.MySkelMesh.AnimSets(WeaponAnimSet)
+	{
+		foreach WeaponAnimSet.Sequences(WeaponAnimSequence)
+		{
+			for (i=0; i<WeaponAnimSequence.Notifies.Length; ++i)
+			{
+				WeaponAnimNotify = KFAnimNotify_CameraAnim(WeaponAnimSequence.Notifies[i].Notify);
+				if (WeaponAnimNotify!=None)
+					WeaponAnimNotify.CameraAnimScale = 0.f;
+			}
+		}
+	}
+}
+
+reliable client function ClientSetSpawnedPerkUILayout(string Layout)
+{
+	SpawnedPerkUILayout = Layout;
+}
+
+reliable client function ClientClearSpawnedPerkUILayout()
+{
+	SpawnedPerkUILayout = "";
+}
+
+reliable client function ClientAddSpawnedPerkUILayoutChunk(string LayoutChunk)
+{
+	SpawnedPerkUILayout $= LayoutChunk;
+}
+
+reliable client function ClientClearMidGameMenuLayout()
+{
+	MidGameMenuLayout = "";
+}
+
+reliable client function ClientAddMidGameMenuLayoutChunk(string LayoutChunk)
+{
+	MidGameMenuLayout $= LayoutChunk;
+}
+
+reliable client function ClientClearZvampextTraderItems()
+{
+	ZvampextClientTraderItems.Length = 0;
+}
+
+reliable client function ClientAddZvampextTraderItemPath(string WeaponPath)
+{
+	ZvampextClientTraderItems.AddItem(WeaponPath);
+}
+
+reliable client function ClientApplyZvampextTraderItems()
+{
+	ApplyZvampextClientTraderItems();
+}
+
+simulated function ApplyZvampextClientTraderItems()
+{
+	local KFGameReplicationInfo KFGRI;
+	local KFGFxObject_TraderItems TraderItems;
+	local int i, Added;
+	local STraderItem NewItem;
+	local int StorePrice;
+	local bool bChanged;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI == None || KFGRI.TraderItems == None)
+	{
+		SetTimer(1.f, false, 'ApplyZvampextClientTraderItems');
+		return;
+	}
+
+	TraderItems = KFGRI.TraderItems;
+	for (i = 0; i < ZvampextClientTraderItems.Length; ++i)
+	{
+		if (!BuildZvampextClientTraderItem(ZvampextClientTraderItems[i], NewItem))
+		{
+			`log("[Zvamp] client skipped custom trader item, could not load weapon def/class: "$ZvampextClientTraderItems[i]);
+			continue;
+		}
+		if (TraderItems.SaleItems.Find('WeaponDef', NewItem.WeaponDef) != INDEX_NONE
+			|| TraderItems.SaleItems.Find('ClassName', NewItem.ClassName) != INDEX_NONE)
+		{
+			StorePrice = GetClientStorePrice(ZvampextClientTraderItems[i]);
+			if (StorePrice >= 0)
+			{
+				ApplyZvampextClientStorePriceToTraderItems(TraderItems, NewItem, StorePrice);
+				bChanged = true;
+			}
+			continue;
+		}
+
+		NewItem.ItemID = GetNextZvampextClientTraderItemID(TraderItems);
+		TraderItems.SaleItems.AddItem(NewItem);
+		++Added;
+		LogZvampextClientTraderItem("client added custom trader item: "$ZvampextClientTraderItems[i], NewItem);
+	}
+
+	if (Added > 0 || bChanged)
+	{
+		TraderItems.SetItemsInfo(TraderItems.SaleItems);
+		KFGRI.TraderItems = TraderItems;
+	}
+}
+
+simulated final function int GetClientStorePrice(string WeaponDefPath)
+{
+	local int PriceSplit;
+
+	PriceSplit = InStr(WeaponDefPath, "|");
+	if (PriceSplit == INDEX_NONE)
+	{
+		return -1;
+	}
+
+	return int(ZvampTrimCommand(Mid(WeaponDefPath, PriceSplit + 1)));
+}
+
+simulated final function int GetNextZvampextClientTraderItemID(KFGFxObject_TraderItems TraderItems)
+{
+	local int ItemID;
+
+	ItemID = TraderItems.SaleItems.Length;
+	while (TraderItems.SaleItems.Find('ItemID', ItemID) != INDEX_NONE)
+	{
+		++ItemID;
+	}
+
+	return ItemID;
+}
+
+simulated final function bool BuildZvampextClientTraderItem(string WeaponDefPath, out STraderItem NewItem)
+{
+	local class<KFWeaponDefinition> WeaponDef;
+	local class<KFWeapon> WeaponClass;
+	local class<KFWeap_DualBase> DualClass;
+	local array<STraderItemWeaponStats> WeaponStats;
+	local string CandidateDefPath;
+	local int DotPos;
+	local int PriceSplit;
+	local int StorePrice;
+	local string PackageName;
+	local string ClassName;
+
+	WeaponDefPath = ZvampTrimCommand(WeaponDefPath);
+	StorePrice = -1;
+	PriceSplit = InStr(WeaponDefPath, "|");
+	if (PriceSplit != INDEX_NONE)
+	{
+		StorePrice = int(ZvampTrimCommand(Mid(WeaponDefPath, PriceSplit + 1)));
+		WeaponDefPath = ZvampTrimCommand(Left(WeaponDefPath, PriceSplit));
+	}
+	if (WeaponDefPath == "")
+	{
+		return false;
+	}
+
+	WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(WeaponDefPath, class'Class', true));
+	if (WeaponDef != None && WeaponDef.default.WeaponClassPath != "")
+	{
+		WeaponClass = class<KFWeapon>(DynamicLoadObject(WeaponDef.default.WeaponClassPath, class'Class', true));
+	}
+	else
+	{
+		WeaponClass = class<KFWeapon>(DynamicLoadObject(WeaponDefPath, class'Class', true));
+		if (WeaponClass == None)
+			return false;
+
+		DotPos = InStr(WeaponDefPath, ".");
+		if (DotPos != INDEX_NONE)
+		{
+			PackageName = Left(WeaponDefPath, DotPos);
+			ClassName = Mid(WeaponDefPath, DotPos + 1);
+			CandidateDefPath = PackageName $ "." $ ClassName $ "Def";
+			WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(CandidateDefPath, class'Class', true));
+		}
+	}
+
+	if (WeaponClass == None || WeaponDef == None)
+		return false;
+
+	if (StorePrice >= 0)
+	{
+		ApplyZvampextClientStorePrice(WeaponDef, StorePrice);
+	}
+
+	NewItem.WeaponDef = WeaponDef;
+	NewItem.ClassName = WeaponClass.Name;
+
+	DualClass = class<KFWeap_DualBase>(WeaponClass);
+	if (DualClass != None && DualClass.default.SingleClass != None)
+		NewItem.SingleClassName = DualClass.default.SingleClass.Name;
+	else NewItem.SingleClassName = WeaponClass.Name;
+
+	NewItem.DualClassName = WeaponClass.default.DualClass != None ? WeaponClass.default.DualClass.Name : '';
+	NewItem.AssociatedPerkClasses = WeaponClass.static.GetAssociatedPerkClasses();
+	NormalizeZvampextClientAssociatedPerks(NewItem.AssociatedPerkClasses);
+	if (NewItem.AssociatedPerkClasses.Find(class'KFPerk_Survivalist') == INDEX_NONE)
+		NewItem.AssociatedPerkClasses.AddItem(class'KFPerk_Survivalist');
+	NewItem.MagazineCapacity = WeaponClass.default.MagazineCapacity[0];
+	NewItem.InitialSpareMags = WeaponClass.default.InitialSpareMags[0];
+	NewItem.MaxSpareAmmo = WeaponClass.default.SpareAmmoCapacity[0];
+	NewItem.InitialSecondaryAmmo = WeaponClass.default.InitialSpareMags[1];
+	NewItem.MaxSecondaryAmmo = WeaponClass.default.MagazineCapacity[1] * WeaponClass.default.SpareAmmoCapacity[1];
+	NewItem.BlocksRequired = WeaponClass.default.InventorySize;
+	NewItem.SecondaryAmmoImagePath = WeaponClass.default.SecondaryAmmoTexture != None ? "img://"$PathName(WeaponClass.default.SecondaryAmmoTexture) : "";
+	NewItem.TraderFilter = WeaponClass.static.GetTraderFilter();
+	NewItem.AltTraderFilter = FT_None;
+	NewItem.InventoryGroup = WeaponClass.default.InventoryGroup;
+	NewItem.GroupPriority = WeaponClass.default.GroupPriority;
+	NewItem.bCanBuyAmmo = true;
+
+	WeaponClass.static.SetTraderWeaponStats(WeaponStats);
+	NewItem.WeaponStats = WeaponStats;
+	return true;
+}
+
+simulated final function ApplyZvampextClientStorePrice(class<KFWeaponDefinition> WeaponDef, int StorePrice)
+{
+	local string DefPath;
+	local int OldPrice;
+
+	if (WeaponDef == None || StorePrice < 0)
+	{
+		return;
+	}
+
+	DefPath = NormalizeZvampextClientClassPath(PathName(WeaponDef));
+	OldPrice = WeaponDef.default.BuyPrice;
+	ConsoleCommand("set" @ DefPath @ "BuyPrice" @ StorePrice);
+	`log("[Zvamp] client custom item price override: "$DefPath@"old="$OldPrice@"new="$StorePrice@"effective="$WeaponDef.default.BuyPrice);
+}
+
+simulated final function ApplyZvampextClientStorePriceToTraderItems(out KFGFxObject_TraderItems TraderItems, const out STraderItem MatchItem, int StorePrice)
+{
+	local int i;
+
+	ApplyZvampextClientStorePrice(MatchItem.WeaponDef, StorePrice);
+	for (i = 0; i < TraderItems.SaleItems.Length; ++i)
+	{
+		if ((MatchItem.WeaponDef != None && TraderItems.SaleItems[i].WeaponDef == MatchItem.WeaponDef)
+			|| (MatchItem.ClassName != '' && TraderItems.SaleItems[i].ClassName == MatchItem.ClassName))
+		{
+			ApplyZvampextClientStorePrice(TraderItems.SaleItems[i].WeaponDef, StorePrice);
+		}
+	}
+}
+
+simulated final function string NormalizeZvampextClientClassPath(string ClassPath)
+{
+	if (Left(ClassPath, 6) ~= "Class ")
+	{
+		ClassPath = Mid(ClassPath, 6);
+	}
+	if (Left(ClassPath, 6) ~= "Class'")
+	{
+		ClassPath = Mid(ClassPath, 6);
+		if (Right(ClassPath, 1) == "'")
+		{
+			ClassPath = Left(ClassPath, Len(ClassPath) - 1);
+		}
+	}
+	return ClassPath;
+}
+
+simulated final function NormalizeZvampextClientAssociatedPerks(out array<class<KFPerk> > AssociatedPerks)
+{
+	local int i, j;
+
+	for (i = AssociatedPerks.Length - 1; i >= 0; --i)
+	{
+		if (AssociatedPerks[i] == None)
+		{
+			AssociatedPerks.Remove(i, 1);
+			continue;
+		}
+		for (j = i - 1; j >= 0; --j)
+		{
+			if (AssociatedPerks[j] == AssociatedPerks[i])
+			{
+				AssociatedPerks.Remove(i, 1);
+				break;
+			}
+		}
+	}
+}
+
+simulated final function LogZvampextClientTraderItem(string Prefix, const out STraderItem Item)
+{
+	local int i;
+	local string PerkNames;
+
+	for (i = 0; i < Item.AssociatedPerkClasses.Length; ++i)
+	{
+		if (PerkNames != "")
+			PerkNames $= ",";
+		PerkNames $= string(Item.AssociatedPerkClasses[i]);
+	}
+
+	`log("[Zvamp] "$Prefix
+		@"class="$Item.ClassName
+		@"def="$Item.WeaponDef
+		@"itemId="$Item.ItemID
+		@"price="$(Item.WeaponDef != None ? Item.WeaponDef.default.BuyPrice : -1)
+		@"blocks="$Item.BlocksRequired
+		@"group="$Item.InventoryGroup
+		@"priority="$Item.GroupPriority
+		@"filter="$Item.TraderFilter
+		@"perks="$PerkNames);
+}
+
+reliable client function ClientRevampOpenTraderMenu()
+{
+	ClientOpenTraderMenu(true);
+	ConsoleCommand("OpenTraderMenu");
+}
+
+reliable client function ClientRevampSetCheats(bool bEnabled)
+{
+	bRevampTestCheatsEnabled = bEnabled;
+	if (bEnabled)
+	{
+		ConsoleCommand("Admin EnableCheats");
+		ClientMessage("Requested admin EnableCheats.",'Priority');
+	}
+	else ClientMessage("Test cheats toggle disabled.",'Priority');
+}
+
+reliable client function ClientRevampGod()
+{
+	ClientMessage("God command is unavailable on this server.",'Priority');
+}
+
+exec function God()
+{
+	ZvampextServerGod();
+}
+
+exec function Diag()
+{
+	ZvampextServerDiag("manual");
+}
+
+exec function ZRefreshnewitems()
+{
+	ZvampextServerRefreshNewItems();
+}
+
+exec function SpawnProbe(optional string ZedName)
+{
+	ZvampextServerSpawnProbe(ZedName);
+}
+
+exec function ZCheckHands()
+{
+	ZvampextServerCheckHands();
+}
+
+reliable server function ZvampextServerGod()
+{
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext god denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+
+	bRevampGodMode = !bRevampGodMode;
+	if (Pawn != None && bRevampGodMode)
+	{
+		Pawn.Health = Max(Pawn.Health, 1);
+	}
+	`log("[Zvamp] god mode "$(bRevampGodMode ? "enabled" : "disabled")$" for "$PlayerReplicationInfo.PlayerName);
+	ClientMessage("[Zvamp] god mode "$(bRevampGodMode ? "enabled." : "disabled."), 'Priority');
+}
+
+reliable server function ZvampextServerDiag(string Label)
+{
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+	local int RemainingAI, CurrentMaxMonsters, Wave, AIAlive;
+	local bool bTraderOpen, bStopCountDown;
+	local name GameStateName;
+	local KFAISpawnManager SpawnManager;
+
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext diag denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	GameStateName = 'None';
+	Wave = -1;
+	AIAlive = -1;
+	RemainingAI = -1;
+	CurrentMaxMonsters = -1;
+	if (KFGI != None)
+	{
+		GameStateName = KFGI.GetStateName();
+		AIAlive = KFGI.AIAliveCount;
+		SpawnManager = KFGI.SpawnManager;
+	}
+	if (KFGRI != None)
+	{
+		Wave = KFGRI.WaveNum;
+		RemainingAI = KFGRI.AIRemaining;
+		CurrentMaxMonsters = KFGRI.CurrentMaxMonsters;
+		bTraderOpen = KFGRI.bTraderIsOpen;
+		bStopCountDown = KFGRI.bStopCountDown;
+	}
+
+	`log("[ZvampDiag] admin diag "$Label
+		@"from="$PlayerReplicationInfo.PlayerName
+		@"Game="$KFGI
+		@"State="$GameStateName
+		@"Wave="$Wave
+		@"TraderOpen="$bTraderOpen
+		@"StopCountdown="$bStopCountDown
+		@"AIAlive="$AIAlive
+		@"AIRemaining="$RemainingAI
+		@"CurrentMaxMonsters="$CurrentMaxMonsters
+		@"SpawnManager="$SpawnManager);
+	ClientMessage("[Zvamp] diag printed to server console.", 'Priority');
+}
+
+final function class<KFWeaponDefinition> ZvampResolveWeaponDefForWeapon(KFWeapon W)
+{
+	local string ClassPath;
+	local string PackageName;
+	local string ClassName;
+	local string Suffix;
+	local string DefPath;
+	local int DotPos;
+	local class<KFWeaponDefinition> WeaponDef;
+
+	if (W == None)
+		return None;
+
+	ClassPath = PathName(W.Class);
+	DotPos = InStr(ClassPath, ".");
+	if (DotPos <= 0)
+		return None;
+
+	PackageName = Left(ClassPath, DotPos);
+	ClassName = string(W.Class.Name);
+	if (Left(ClassName, 7) ~= "KFWeap_")
+	{
+		Suffix = Mid(ClassName, 7);
+		DefPath = PackageName $ ".KFWeapDef_" $ Suffix;
+		WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+		if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
+			return WeaponDef;
+	}
+
+	DefPath = PackageName $ "." $ Repl(ClassName, "KFWeap", "KFWeapDef");
+	WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+	if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
+		return WeaponDef;
+
+	return None;
+}
+
+reliable server function ZvampextServerCheckHands()
+{
+	local KFWeapon W;
+	local Inventory Inv;
+	local class<KFWeaponDefinition> WeaponDef;
+	local string WeaponClassPath, WeaponDefPath, WeaponDefClassPath, ArchetypePath;
+	local string ItemName;
+	local int InventoryGroup, GroupPriority;
+
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext checkhands denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+
+	if (Pawn == None)
+	{
+		ClientMessage("[Zvamp] checkhands failed: you have no pawn.", 'Priority');
+		return;
+	}
+
+	Inv = Pawn.Weapon;
+	W = KFWeapon(Inv);
+	if (Inv == None)
+	{
+		ClientMessage("[Zvamp] checkhands: no weapon/inventory in hands.", 'Priority');
+		return;
+	}
+
+	WeaponClassPath = PathName(Inv.Class);
+	ArchetypePath = PathName(Inv.ObjectArchetype);
+	if (W != None)
+	{
+		ItemName = W.ItemName;
+		InventoryGroup = W.InventoryGroup;
+		GroupPriority = W.GroupPriority;
+		WeaponDef = ZvampResolveWeaponDefForWeapon(W);
+		if (WeaponDef != None)
+		{
+			WeaponDefPath = PathName(WeaponDef);
+			WeaponDefClassPath = WeaponDef.default.WeaponClassPath;
+		}
+	}
+
+	ClientMessage("[Zvamp] hands item: "$WeaponClassPath, 'Priority');
+	if (W != None)
+		ClientMessage("[Zvamp] item name: "$W.ItemName$" group="$W.InventoryGroup$" priority="$W.GroupPriority, 'Priority');
+	if (WeaponDef != None)
+		ClientMessage("[Zvamp] weapon def: "$WeaponDefPath$" -> "$WeaponDefClassPath, 'Priority');
+	ClientMessage("[Zvamp] archetype: "$ArchetypePath, 'Priority');
+
+	`log("[ZvampCheckHands] player="$PlayerReplicationInfo.PlayerName
+		@"item="$WeaponClassPath
+		@"itemName="$ItemName
+		@"group="$InventoryGroup
+		@"priority="$GroupPriority
+		@"weaponDef="$WeaponDefPath
+		@"weaponDefClass="$WeaponDefClassPath
+		@"archetype="$ArchetypePath);
+}
+
+reliable server function ZvampextServerRefreshNewItems()
+{
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext item refresh denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+
+	if (OnRefreshNewItems == None)
+	{
+		ClientMessage("[Zvamp] custom trader item refresh failed: server handler not ready.", 'Priority');
+		return;
+	}
+
+	`log("[Zvamp] custom trader item refresh requested by "$PlayerReplicationInfo.PlayerName);
+	OnRefreshNewItems(Self);
+}
+
+final function class<KFPawn_Monster> ZvampResolveSpawnProbeClass(string ZedName)
+{
+	local string ClassName;
+
+	ZedName = Locs(ZvampTrimCommand(ZedName));
+	if (ZedName == "" || ZedName ~= "crawler")
+	{
+		return class'KFPawn_ZedCrawler';
+	}
+	if (ZedName ~= "cyst" || ZedName ~= "clot")
+	{
+		return class'KFPawn_ZedClot_Cyst';
+	}
+	if (ZedName ~= "alpha" || ZedName ~= "aclot")
+	{
+		return class'KFPawn_ZedClot_Alpha';
+	}
+	if (ZedName ~= "slasher" || ZedName ~= "sclot")
+	{
+		return class'KFPawn_ZedClot_Slasher';
+	}
+	if (ZedName ~= "bloat")
+	{
+		return class'KFPawn_ZedBloat';
+	}
+	if (ZedName ~= "stalker")
+	{
+		return class'KFPawn_ZedStalker';
+	}
+	if (ZedName ~= "gorefast")
+	{
+		return class'KFPawn_ZedGorefast';
+	}
+	if (ZedName ~= "husk")
+	{
+		return class'KFPawn_ZedHusk';
+	}
+
+	ClassName = ZedName;
+	if (InStr(ClassName, ".") == INDEX_NONE)
+	{
+		ClassName = "KFGameContent." $ ClassName;
+	}
+	return class<KFPawn_Monster>(DynamicLoadObject(ClassName, class'Class'));
+}
+
+reliable server function ZvampextServerSpawnProbe(optional string ZedName)
+{
+	local class<KFPawn_Monster> ZedClass;
+	local KFPawn_Monster Zed;
+	local Controller ZedController;
+	local vector SpawnLocation, Forward;
+	local rotator SpawnRotation;
+	local NavigationPoint ProbeStartSpot;
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext spawnprobe denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+
+	ZedClass = ZvampResolveSpawnProbeClass(ZedName);
+	`log("[ZvampProbe] direct spawn requested by "$PlayerReplicationInfo.PlayerName
+		@"Input="$ZedName
+		@"Class="$ZedClass);
+	if (ZedClass == None)
+	{
+		ClientMessage("[Zvamp] spawnprobe failed: unknown zed class.", 'Priority');
+		return;
+	}
+
+	SpawnRotation = Rotation;
+	if (Pawn != None)
+	{
+		Forward = Vector(Rotation);
+		SpawnLocation = Pawn.Location + Forward * 220;
+		SpawnLocation.Z += 24;
+	}
+	else
+	{
+		KFGI = KFGameInfo(WorldInfo.Game);
+		if (KFGI != None)
+		{
+			ProbeStartSpot = KFGI.FindPlayerStart(Self, 0);
+		}
+		if (ProbeStartSpot != None)
+		{
+			SpawnLocation = ProbeStartSpot.Location;
+			SpawnLocation.X += 128;
+			SpawnLocation.Z += 64;
+			SpawnRotation = ProbeStartSpot.Rotation;
+		}
+		else
+		{
+			SpawnLocation = Location;
+			SpawnLocation.Z += 64;
+		}
+	}
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	`log("[ZvampProbe] before pawn spawn"
+		@"Location="$SpawnLocation
+		@"Game="$KFGI
+		@"Wave="$((KFGRI != None) ? string(KFGRI.WaveNum) : "None")
+		@"AIAlive="$((KFGI != None) ? string(KFGI.AIAliveCount) : "None")
+		@"AIRemaining="$((KFGRI != None) ? string(KFGRI.AIRemaining) : "None"));
+
+	Zed = Spawn(ZedClass,,, SpawnLocation, SpawnRotation,, true);
+	`log("[ZvampProbe] after pawn spawn Pawn="$Zed);
+	if (Zed == None)
+	{
+		ClientMessage("[Zvamp] spawnprobe pawn spawn returned None.", 'Priority');
+		return;
+	}
+
+	`log("[ZvampProbe] before controller spawn ControllerClass="$Zed.ControllerClass
+		@"Health="$Zed.Health
+		@"HealthMax="$Zed.HealthMax);
+	ZedController = Spawn(Zed.ControllerClass);
+	`log("[ZvampProbe] after controller spawn Controller="$ZedController);
+	if (ZedController == None)
+	{
+		ClientMessage("[Zvamp] spawnprobe controller spawn returned None.", 'Priority');
+		return;
+	}
+
+	`log("[ZvampProbe] before possess");
+	ZedController.Possess(Zed, false);
+	`log("[ZvampProbe] after possess Controller="$Zed.Controller@"PawnController="$ZedController);
+	ClientMessage("[Zvamp] spawnprobe spawned "$ZedClass$"; check server log.", 'Priority');
+}
+
+exec function RequestSkipTrader()
+{
+	if (bRevampTraderGuardEnabled && bRevampTraderGuardBlockSkip && PlayerReplicationInfo!=None && !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("TraderGuard is blocking skip trader votes.",'Priority');
+		return;
+	}
+	ZvampextReleaseTraderPauseForSkip();
+	Super.RequestSkipTrader();
+}
+
+reliable server function ZvampextReleaseTraderPauseForSkip()
+{
+	local KFGameReplicationInfo KFGRI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI == None || !KFGRI.bTraderIsOpen)
+	{
+		return;
+	}
+
+	KFGRI.bStopCountDown = false;
+	KFGRI.bForceNetUpdate = true;
+	`log("[Zvamp] released trader pause for skip request from "$PlayerReplicationInfo.PlayerName);
+}
+
+exec function RevampOpenTrader()
+{
+	RevampPublicOpenTrader();
+}
+
+exec function Admin(string CommandLine)
+{
+	ZvampextServerAdmin(CommandLine);
+}
+
+final function string ZvampTrimCommand(string S)
+{
+	while (Len(S)>0 && (Left(S,1)==" " || Left(S,1)==Chr(9)))
+		S = Mid(S,1);
+	while (Len(S)>0 && (Right(S,1)==" " || Right(S,1)==Chr(9)))
+		S = Left(S,Len(S)-1);
+	return S;
+}
+
+reliable server function ZvampextServerAdmin(string CommandLine)
+{
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+	local string Result;
+
+	CommandLine = ZvampTrimCommand(CommandLine);
+	if (CommandLine ~= "zvampextendwave")
+		CommandLine = "endwave";
+	else if (CommandLine ~= "zvampextkillzeds")
+		CommandLine = "killzeds";
+	else if (CommandLine ~= "zvampextfastforward")
+		CommandLine = "ff";
+	else if (CommandLine ~= "zvampextopentrader")
+		CommandLine = "opentrader";
+
+	if (CommandLine == "")
+	{
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 15) == "doshthrowamount")
+	{
+		PlayerSetDoshThrowAmount(int(ZvampTrimCommand(Mid(CommandLine, 15))));
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 9) == "doshthrow")
+	{
+		PlayerSetDoshThrowAmount(int(ZvampTrimCommand(Mid(CommandLine, 9))));
+		return;
+	}
+
+	if (CommandLine ~= "zclassresetyesimcertain")
+	{
+		ZClassResetyesimcertain();
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 5) == "zvote")
+	{
+		ZVote(ZvampTrimCommand(Mid(CommandLine, 5)));
+		return;
+	}
+
+	if (PlayerReplicationInfo == None || !PlayerReplicationInfo.bAdmin)
+	{
+		ClientMessage("Zvampext admin command denied: you are not marked as admin on the server.", 'Priority');
+		return;
+	}
+	`log("[Zvamp] admin command from "$PlayerReplicationInfo.PlayerName$": "$CommandLine);
+
+	if (CommandLine ~= "god")
+	{
+		ZvampextServerGod();
+		return;
+	}
+
+	if (CommandLine ~= "diag")
+	{
+		ZvampextServerDiag("admin-command");
+		return;
+	}
+
+	if (CommandLine ~= "zcheckhands" || CommandLine ~= "zcheckhand" || CommandLine ~= "checkhands" || CommandLine ~= "checkhand")
+	{
+		ZvampextServerCheckHands();
+		return;
+	}
+
+	if (CommandLine ~= "buildid" || CommandLine ~= "build id")
+	{
+		AdminBuildID();
+		return;
+	}
+
+	if (CommandLine ~= "zrefreshnewitems" || CommandLine ~= "refreshnewitems" || CommandLine ~= "refreshitems")
+	{
+		ZvampextServerRefreshNewItems();
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 10) == "spawnprobe")
+	{
+		ZvampextServerSpawnProbe(ZvampTrimCommand(Mid(CommandLine, 10)));
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 6) == "doshme")
+	{
+		AdminGiveDosh(int(ZvampTrimCommand(Mid(CommandLine, 6))));
+		return;
+	}
+
+	if (Left(Locs(CommandLine), 12) == "progresswave")
+	{
+		AdminProgressWave(int(ZvampTrimCommand(Mid(CommandLine, 12))));
+		return;
+	}
+
+	if (CommandLine ~= "endwave")
+	{
+		AdminRevampAction(18);
+		return;
+	}
+
+	if (CommandLine ~= "opentrader" || CommandLine ~= "open trader" || CommandLine ~= "trader")
+	{
+		AdminRevampAction(13);
+		return;
+	}
+
+	if (CommandLine ~= "killzeds")
+	{
+		AdminRevampAction(17);
+		return;
+	}
+
+	if (CommandLine ~= "f" || CommandLine ~= "ff" || CommandLine ~= "fastforward" || CommandLine ~= "skip" || CommandLine ~= "skiptrader")
+	{
+		KFGI = KFGameInfo(WorldInfo.Game);
+		KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+		if (KFGI == None || KFGRI == None || !KFGRI.bTraderIsOpen)
+		{
+			ClientMessage("Trader is not open.", 'Priority');
+			return;
+		}
+
+		ZvampextReleaseTraderPauseForSkip();
+		KFGRI.bStopCountDown = false;
+		KFGRI.RemainingTime = 1;
+		KFGRI.RemainingMinute = 1;
+		KFGI.SkipTrader(1);
+		ClientMessage("Skipped trader time.", 'Priority');
+		return;
+	}
+
+	Result = ConsoleCommand(CommandLine);
+	if (Result != "")
+	{
+		ClientMessage(Result);
+	}
+}
+
+exec function RvOpenTrader()
+{
+	RevampPublicOpenTrader();
+}
+
+exec function ZvampextFastForward()
+{
+	RevampAdminFastForwardTrader();
+}
+
+exec function ZvampextOpenTrader()
+{
+	RevampAdminOpenTrader();
+}
+
+exec function ZvampextKillZeds()
+{
+	AdminRevampAction(17);
+}
+
+exec function ZvampextEndWave()
+{
+	AdminRevampAction(18);
+}
+
+exec function KillZeds()
+{
+	AdminRevampAction(17);
+}
+
+exec function EndWave()
+{
+	AdminRevampAction(18);
+}
+
+exec function DoshMe(int DoshAmount)
+{
+	AdminGiveDosh(DoshAmount);
+}
+
+exec function DoshThrowAmount(int NewAmount)
+{
+	PlayerSetDoshThrowAmount(NewAmount);
+}
+
+exec function ProgressWave(int WaveCount)
+{
+	AdminProgressWave(WaveCount);
+}
+
+exec function ZVote(string CommandLine)
+{
+	CommandLine = ZvampTrimCommand(CommandLine);
+	if (Left(Locs(CommandLine), 12) == "progresswave")
+	{
+		PlayerProgressWaveVoteCall(int(ZvampTrimCommand(Mid(CommandLine, 12))));
+		return;
+	}
+	if (CommandLine ~= "yes" || CommandLine ~= "accept")
+	{
+		PlayerProgressWaveVoteAnswer(true);
+		return;
+	}
+	if (CommandLine ~= "no" || CommandLine ~= "decline")
+	{
+		PlayerProgressWaveVoteAnswer(false);
+		return;
+	}
+	ClientMessage("[Zvamp] Usage: Zvote progresswave <waves>, Zvote yes, or Zvote no.", 'Priority');
+}
+
+exec function BuildID()
+{
+	AdminBuildID();
+}
+
+exec function CheckHands()
+{
+	ZvampextServerCheckHands();
+}
+
+exec function ZClassResetyesimcertain()
+{
+	ServerResetCurrentClassYesImCertain();
+}
+
+exec function AdminMenu()
+{
+	local KF2GUIController GUIController;
+	local UI_MidGameMenu Menu;
+
+	if (ShouldBlockVampUIForEndMatch())
+	{
+		ClientMessage("Zvampext UI is disabled after match end so vanilla endmatch/mapvote can take over.",'Priority');
+		return;
+	}
+
+	if (PlayerReplicationInfo==None || (!PlayerReplicationInfo.bAdmin && WorldInfo.NetMode==NM_Client))
+	{
+		ClientMessage("You are not authorized to open the Zvampext admin menu.",'Priority');
+		return;
+	}
+
+	GUIController = class'KF2GUIController'.Static.GetGUIController(Self);
+	if (GUIController==None)
+		return;
+
+	Menu = UI_MidGameMenu(GUIController.OpenMenu(MidGameMenuClass));
+	if (Menu!=None)
+		Menu.SelectAdminPage();
 }
 
 simulated reliable client event bool ShowConnectionProgressPopup(EProgressMessageType ProgressType, string ProgressTitle, string ProgressDescription, bool SuppressPasswordRetry = false)
@@ -1251,12 +3012,26 @@ exec function SwitchTeam()
 defaultproperties
 {
 	InputClass=Class'ExtPlayerInput'
-	PurchaseHelperClass=class'ExtAutoPurchaseHelper'
+	// Trader crash diagnostic: use the vanilla purchase helper while isolating
+	// the native GFx crash that happens after ExtAutoPurchaseHelper initializes.
+	PurchaseHelperClass=class'KFAutoPurchaseHelper'
 	bIgnoreEncroachers=true
 	SpectatorCameraSpeed=900
+	bVampUIEndMatchEnabled=false
+	ZvampextBuildID="ServerExt 2026-05-19 mapvote-player-progress-vote-chat"
+	ZvampextClientTraderFilterIndex=-1
 	MidGameMenuClass=class'UI_MidGameMenu'
 	PerkList.Empty()
-	PerkList.Add((PerkClass=Class'ExtPerkManager'))
+	PerkList.Add((PerkClass=class'KFPerk_Berserker'))
+	PerkList.Add((PerkClass=class'KFPerk_Commando'))
+	PerkList.Add((PerkClass=class'KFPerk_Support'))
+	PerkList.Add((PerkClass=class'KFPerk_FieldMedic'))
+	PerkList.Add((PerkClass=class'KFPerk_Demolitionist'))
+	PerkList.Add((PerkClass=class'KFPerk_Firebug'))
+	PerkList.Add((PerkClass=class'KFPerk_Gunslinger'))
+	PerkList.Add((PerkClass=class'KFPerk_Sharpshooter'))
+	PerkList.Add((PerkClass=class'KFPerk_SWAT'))
+	PerkList.Add((PerkClass=class'KFPerk_Survivalist'))
 
 	NVG_DOF_FocalDistance=3800.0
 	NVG_DOF_SharpRadius=2500.0

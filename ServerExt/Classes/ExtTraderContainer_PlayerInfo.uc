@@ -25,9 +25,11 @@ function SetPerkInfo()
 	local float V;
 
 	KFPC = ExtPlayerController(GetPC());
-	if (KFPC!=none && KFPC.ActivePerkManager!=None && KFPC.ActivePerkManager.CurrentPerk!=None)
+	if (KFPC!=none && KFPC.ActivePerkManager!=None)
 	{
-		CurrentPerk = KFPC.ActivePerkManager.CurrentPerk;
+		CurrentPerk = KFPC.ResolveZvampextClientActivePerk();
+		if (CurrentPerk==None)
+			return;
 		SetString("perkName", CurrentPerk.PerkName);
 		SetString("perkIconPath", CurrentPerk.GetPerkIconPath(CurrentPerk.CurrentLevel));
 		SetInt("perkLevel", CurrentPerk.CurrentLevel);
@@ -65,6 +67,35 @@ function SetPerkList()
 		}
 
 		SetObject("perkList", DataProvider);
+	}
+}
+
+function Callback_PerkChanged(int PerkIndex)
+{
+	local ExtPlayerController KFPC;
+	local ExtMenu_Trader TraderMenu;
+
+	KFPC = ExtPlayerController(GetPC());
+	if (KFPC == None || KFPC.ActivePerkManager == None || PerkIndex < 0 || PerkIndex >= KFPC.ActivePerkManager.UserPerks.Length)
+	{
+		return;
+	}
+
+	KFPC.SetZvampextClientTraderPerkIndex(PerkIndex);
+	KFPC.PendingPerkClass = KFPC.ActivePerkManager.UserPerks[PerkIndex].Class;
+	KFPC.SwitchToPerk(KFPC.PendingPerkClass);
+
+	TraderMenu = (KFPC.MyGFxManager != None) ? ExtMenu_Trader(KFPC.MyGFxManager.TraderMenu) : None;
+	if (TraderMenu != None)
+	{
+		TraderMenu.OnPerkChanged(PerkIndex);
+		TraderMenu.RefreshItemComponents();
+		TraderMenu.UpdatePlayerInfo();
+	}
+	else
+	{
+		SetPerkInfo();
+		SetPerkList();
 	}
 }
 

@@ -20,6 +20,7 @@ class ExtMenu_Trader extends KFGFxMenu_Trader;
 
 var ExtPlayerController ExtKFPC;
 var Ext_PerkBase ExLastPerkClass;
+var bool bZvampextApplyingPerkChange;
 
 function InitializeMenu(KFGFxMoviePlayer_Manager InManager)
 {
@@ -29,7 +30,7 @@ function InitializeMenu(KFGFxMoviePlayer_Manager InManager)
 
 function int GetPerkIndex()
 {
-	return (ExtKFPC.ActivePerkManager!=None ? Max(ExtKFPC.ActivePerkManager.UserPerks.Find(ExtKFPC.ActivePerkManager.CurrentPerk),0) : 0);
+	return (ExtKFPC!=None ? ExtKFPC.GetZvampextTraderFilterIndex() : 0);
 }
 
 function UpdatePlayerInfo()
@@ -38,9 +39,10 @@ function UpdatePlayerInfo()
 	{
 		PlayerInfoContainer.SetPerkInfo();
 		PlayerInfoContainer.SetPerkList();
-		if (ExtKFPC.ActivePerkManager!=None && ExtKFPC.ActivePerkManager.CurrentPerk!=ExLastPerkClass)
+		if (!bZvampextApplyingPerkChange && ExtKFPC.ActivePerkManager!=None && ExtKFPC.ActivePerkManager.CurrentPerk!=ExLastPerkClass)
 		{
 			ExLastPerkClass = ExtKFPC.ActivePerkManager.CurrentPerk;
+			ExtKFPC.SetZvampextClientTraderFilterIndex(ExtKFPC.GetZvampextActiveTraderPerkIndex());
 			OnPerkChanged(GetPerkIndex());
 		}
 
@@ -50,8 +52,28 @@ function UpdatePlayerInfo()
 
 function Callback_PerkChanged(int PerkIndex)
 {
+	if (ExtKFPC==None || ExtKFPC.ActivePerkManager==None || PerkIndex<0 || PerkIndex>ExtKFPC.ActivePerkManager.UserPerks.Length)
+		return;
+
+	if (bZvampextApplyingPerkChange)
+		return;
+
+	bZvampextApplyingPerkChange = true;
+	if (PerkIndex==ExtKFPC.ActivePerkManager.UserPerks.Length)
+	{
+		ExtKFPC.SetZvampextClientTraderFilterIndex(PerkIndex);
+		OnPerkChanged(PerkIndex);
+		bZvampextApplyingPerkChange = false;
+		RefreshItemComponents();
+		return;
+	}
+
+	ExtKFPC.SetZvampextClientTraderPerkIndex(PerkIndex);
 	ExtKFPC.PendingPerkClass = ExtKFPC.ActivePerkManager.UserPerks[PerkIndex].Class;
 	ExtKFPC.SwitchToPerk(ExtKFPC.PendingPerkClass);
+	ExLastPerkClass = ExtKFPC.ActivePerkManager.CurrentPerk;
+	OnPerkChanged(PerkIndex);
+	bZvampextApplyingPerkChange = false;
 
 	if (PlayerInventoryContainer != none)
 	{
@@ -61,6 +83,22 @@ function Callback_PerkChanged(int PerkIndex)
 
 	// Refresht he UI
 	RefreshItemComponents();
+}
+
+function OnPerkChanged(int PerkIndex)
+{
+	if (ExtKFPC!=None && ExtKFPC.ActivePerkManager!=None
+		&& PerkIndex>=0 && PerkIndex<=ExtKFPC.ActivePerkManager.UserPerks.Length)
+	{
+		ExtKFPC.SetZvampextClientTraderFilterIndex(PerkIndex);
+	}
+
+	Super.OnPerkChanged(PerkIndex);
+	if (PlayerInfoContainer != none)
+	{
+		PlayerInfoContainer.SetPerkInfo();
+		PlayerInfoContainer.SetPerkList();
+	}
 }
 
 defaultproperties

@@ -36,6 +36,7 @@ var transient float LastNapalmTime;
 // Server -> Client rep status
 var byte RepState;
 var int RepIndex;
+var transient float LastZvampextRepKickTime;
 
 var array<Ext_PerkBase> UserPerks;
 var Ext_PerkBase CurrentPerk;
@@ -149,6 +150,10 @@ function ApplyPerk(Ext_PerkBase P)
 		PRIOwner.CurrentPerkClass = P.BasePerk;
 		P.UpdatePRILevel();
 	}
+	if (ExtPlayerController(PlayerOwner)!=None)
+	{
+		ExtPlayerController(PlayerOwner).SyncZvampextPerkToStock();
+	}
 
 	if (CurrentPerk!=None)
 	{
@@ -159,11 +164,8 @@ function ApplyPerk(Ext_PerkBase P)
 			HP = KFPawn_Human(PlayerOwner.Pawn);
 			if (HP != None)
 			{
-				HP.HealthMax = HP.default.Health;
-				HP.MaxArmor = HP.default.MaxArmor;
-
-				ModifyHealth(HP.HealthMax);
-				ModifyArmor(HP.MaxArmor);
+				HP.HealthMax = CurrentPerk.GetZvampextHealthCap(HP.default.Health);
+				HP.MaxArmor = CurrentPerk.GetZvampextArmorCap(HP.default.MaxArmor);
 				CurrentPerk.UpdateAmmoStatus(HP.InvManager);
 
 				if (HP.Health > HP.HealthMax) HP.Health = HP.HealthMax;
@@ -193,12 +195,38 @@ simulated function PostBeginPlay()
 simulated function InitPerks()
 {
 	local Ext_PerkBase P;
+	local ExtPlayerReplicationInfo EPRI;
+	local PlayerController PC;
+	local int i;
 
 	if (WorldInfo.NetMode==NM_Client)
 	{
 		foreach DynamicActors(class'Ext_PerkBase',P)
 			if (P.PerkManager!=Self)
 				RegisterPerk(P);
+
+		if (CurrentPerk==None)
+		{
+			PC = PlayerController(Owner);
+			if (PC!=None)
+			{
+				EPRI = ExtPlayerReplicationInfo(PC.PlayerReplicationInfo);
+				if (EPRI!=None && EPRI.ECurrentPerk!=None)
+				{
+					for (i=0; i<UserPerks.Length; ++i)
+					{
+						if (UserPerks[i]!=None && UserPerks[i].Class==EPRI.ECurrentPerk)
+						{
+							CurrentPerk = UserPerks[i];
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		if (UserPerks.Length==0 || CurrentPerk==None)
+			SetTimer(0.25,false,'InitPerks');
 	}
 	else if (PRIOwner!=PlayerOwner.PlayerReplicationInfo) // See if was assigned an inactive PRI.
 	{
@@ -240,6 +268,18 @@ function ServerInitPerks()
 
 simulated function RegisterPerk(Ext_PerkBase P)
 {
+	local int i;
+
+	if (P==None)
+		return;
+
+	for (i=0; i<UserPerks.Length; ++i)
+		if (UserPerks[i]==P)
+		{
+			P.PerkManager = Self;
+			return;
+		}
+
 	UserPerks[UserPerks.Length] = P;
 	P.PerkManager = Self;
 }
@@ -448,11 +488,38 @@ function InitiateClientRep()
 {
 	RepState = 0;
 	RepIndex = 0;
+	LastZvampextRepKickTime = WorldInfo.RealTimeSeconds;
 	SetTimer(0.01,true,'ReplicateTimer');
+}
+
+function bool ZvampextNeedsReplicationKick()
+{
+	local int i;
+
+	if (WorldInfo.NetMode==NM_Client)
+		return false;
+	if (UserPerks.Length==0 || CurrentPerk==None || !bServerReady)
+		return true;
+	for (i=0; i<UserPerks.Length; ++i)
+	{
+		if (UserPerks[i]==None || !UserPerks[i].bClientAuthorized || !UserPerks[i].bPerkNetReady)
+			return true;
+	}
+	return false;
+}
+
+function ZvampextKickClientReplication(optional bool bForce)
+{
+	if (!bForce && WorldInfo.RealTimeSeconds-LastZvampextRepKickTime<2.f)
+		return;
+	InitiateClientRep();
 }
 
 function ReplicateTimer()
 {
+	local int i;
+	local bool bAllPerksReady;
+
 	switch (RepState)
 	{
 	case REP_CustomCharacters: // Replicate custom characters.
@@ -469,24 +536,31 @@ function ReplicateTimer()
 		}
 		break;
 	case REP_PerkClasses: // Open up all actor channel connections.
-		if (RepIndex>=UserPerks.Length)
+		bAllPerksReady = true;
+		for (i=0; i<UserPerks.Length; ++i)
+		{
+			if (UserPerks[i]==None)
+				continue;
+
+			if (!UserPerks[i].bClientAuthorized)
+			{
+				bAllPerksReady = false;
+				UserPerks[i].RemoteRole = ROLE_SimulatedProxy;
+				if (UserPerks[i].NextAuthTime<WorldInfo.RealTimeSeconds)
+				{
+					UserPerks[i].NextAuthTime = WorldInfo.RealTimeSeconds+0.5;
+					UserPerks[i].ClientAuth();
+				}
+			}
+			else if (!UserPerks[i].bPerkNetReady)
+			{
+				bAllPerksReady = false;
+			}
+		}
+		if (bAllPerksReady)
 		{
 			RepIndex = 0;
 			++RepState;
-		}
-		else if (UserPerks[RepIndex].bClientAuthorized)
-		{
-			if (UserPerks[RepIndex].bPerkNetReady)
-				++RepIndex;
-		}
-		else
-		{
-			UserPerks[RepIndex].RemoteRole = ROLE_SimulatedProxy;
-			if (UserPerks[RepIndex].NextAuthTime<WorldInfo.RealTimeSeconds)
-			{
-				UserPerks[RepIndex].NextAuthTime = WorldInfo.RealTimeSeconds+0.5;
-				UserPerks[RepIndex].ClientAuth();
-			}
 		}
 		break;
 	default:
@@ -556,6 +630,7 @@ function ModifyHealth(out int InHealth)
 {
 	if (CurrentPerk!=None)
 		CurrentPerk.ModifyHealth(InHealth);
+	InHealth = Clamp(InHealth,1,500);
 }
 
 function ModifyArmor(out byte MaxArmor)
@@ -620,6 +695,7 @@ simulated function ModifyMagSizeAndNumber(KFWeapon KFW, out int MagazineCapacity
 {
 	if (CurrentPerk!=None)
 		CurrentPerk.ModifyMagSizeAndNumber(KFW,MagazineCapacity,WeaponPerkClass,bSecondary,WeaponClassname);
+	MagazineCapacity = Clamp(MagazineCapacity,0,2000);
 }
 
 simulated function ModifySpareAmmoAmount(KFWeapon KFW, out int PrimarySpareAmmo, optional const out STraderItem TraderItem, optional bool bSecondary=false)

@@ -206,7 +206,7 @@ function DrawMenu()
 		XScale = Canvas.ClipX*0.4;
 	}
 	YPos = Canvas.ClipY*0.05;
-	Canvas.SetDrawColor(128,32,32,FrameOpacity);
+	Canvas.SetDrawColor(58,36,128,FrameOpacity);
 	Owner.CurrentStyle.DrawRectBox(XPos,YPos,XScale*0.75,YHeight,26,1);
 
 	Canvas.DrawColor = SBTextColor;
@@ -232,7 +232,7 @@ function DrawMenu()
 
 	XPos += XScale*0.75-1;
 	XScale *= 0.25;
-	Canvas.SetDrawColor(18,8,8,FrameOpacity);
+	Canvas.SetDrawColor(12,8,26,FrameOpacity);
 	Owner.CurrentStyle.DrawRectBox(XPos,YPos,XScale,YHeight,26);
 	Canvas.DrawColor = SBTextColor;
 	Canvas.Font = Owner.CurrentStyle.PickFont(DefFont+3,FontScalar);
@@ -259,7 +259,7 @@ function DrawMenu()
 	YHeight = YL;
 	if (bShowSpectatorsOnly)
 		Canvas.SetDrawColor(32,32,128,FrameOpacity);
-	else Canvas.SetDrawColor(128,32,32,FrameOpacity);
+	else Canvas.SetDrawColor(58,36,128,FrameOpacity);
 	Owner.CurrentStyle.DrawRectBox(XPos,YPos,XScale,YHeight,16,2);
 
 	// Calc X offsets
@@ -297,7 +297,7 @@ function DrawMenu()
 	}
 
 	// Scoreboard background.
-	Canvas.SetDrawColor(18,8,8,FrameOpacity);
+	Canvas.SetDrawColor(12,8,26,FrameOpacity);
 	Owner.CurrentStyle.DrawRectBox(XPos,YPos,XScale,YHeight,16);
 
 	// Setup listing.
@@ -375,8 +375,8 @@ function DrawPlayerEntry(Canvas C, int Index, float YOffset, float Height, float
 		{
 		case 0: // Humans - Red.
 			if (bFocus)
-				C.SetDrawColor(160,48,48,FrameOpacity);
-			else C.SetDrawColor(128,32,32,FrameOpacity);
+				C.SetDrawColor(88,60,168,FrameOpacity);
+			else C.SetDrawColor(58,36,128,FrameOpacity);
 			break;
 		default: // Rest - Green.
 			if (bFocus)

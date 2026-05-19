@@ -18,20 +18,46 @@
 
 Class Ext_PerkSurvivalist extends Ext_PerkBase;
 
+function AddDefaultInventory(KFPawn P)
+{
+	Super.AddDefaultInventory(P);
+	if (P!=None && PrimaryMelee!=None && P.DefaultInventory.Find(PrimaryMelee)==INDEX_NONE)
+		P.DefaultInventory.AddItem(PrimaryMelee);
+}
+
 defaultproperties
 {
 	PerkIcon=Texture2D'UI_PerkIcons_TEX.UI_PerkIcon_Survivalist'
 	DefTraitList.Add(class'Ext_TraitWPSurv')
-	//DefTraitList.Add(class'Ext_TraitHeavyArmor')
+	DefTraitList.Add(class'Ext_TraitUnGrab')
+	DefTraitList.Add(class'Ext_TraitUnCloak')
+	DefTraitList.Add(class'Ext_TraitEnemyHP')
+	DefTraitList.Add(class'Ext_TraitEliteReload')
+	DefTraitList.Add(class'Ext_TraitSupply')
+	DefTraitList.Add(class'Ext_TraitBoomWeld')
+	DefTraitList.Add(class'Ext_TraitSupplyGren')
+	DefTraitList.Add(class'Ext_TraitSirenResistance')
+	DefTraitList.Add(class'Ext_TraitNapalm')
+	DefTraitList.Add(class'Ext_TraitHeavyArmor')
 	BasePerk=class'KFPerk_Survivalist'
 
-	PrimaryMelee=class'KFWeap_Random'
-	PrimaryWeapon=class'KFWeap_Knife_Support'
+	PrimaryMelee=class'KFWeap_Knife_Support'
+	PrimaryWeapon=class'KFWeap_Random'
 	PerkGrenade=class'KFProj_HEGrenade'
 
 	PrimaryWeaponDef=class'KFWeapDef_Random'
 	KnifeWeaponDef=class'KFweapDef_Knife_Support'
 	GrenadeWeaponDef=class'KFWeapDef_Grenade_Commando'
+
+	DefPerkStats(8)=(bHiddenConfig=false)   // Welder
+	DefPerkStats(9)=(bHiddenConfig=false)   // Heal
+	DefPerkStats(15)=(bHiddenConfig=false)  // Poison
+	DefPerkStats(16)=(bHiddenConfig=false)  // Sonic
+	DefPerkStats(17)=(bHiddenConfig=false)  // Fire
+	DefPerkStats(18)=(bHiddenConfig=false)  // AllDmg
+	DefPerkStats(19)=(bHiddenConfig=false)  // HeadDamage
+	DefPerkStats(20)=(bHiddenConfig=false)  // HealRecharge
+	DefPerkStats(21)=(bHiddenConfig=false)  // Switch
 
 	AutoBuyLoadOutPath=(class'KFWeapDef_DragonsBreath', class'KFWeapDef_M16M203', class'KFWeapDef_MedicRifle')
 }

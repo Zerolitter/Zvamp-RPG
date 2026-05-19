@@ -91,10 +91,18 @@ function LaunchMenus(optional bool bForceSkipLobby)
 function OpenMenu(byte NewMenuIndex, optional bool bShowWidgets = true)
 {
 	local KF2GUIController GUIController;
+	local ExtPlayerController EPC;
 
+	EPC = ExtPlayerController(GetPC());
 	GUIController = class'KF2GUIController'.Static.GetGUIController(GetPC());
 
 	Super.OpenMenu(NewMenuIndex, bShowWidgets);
+
+	if (EPC != None && EPC.ShouldBlockVampUIForEndMatch())
+	{
+		EPC.CheckVampUIEndMatchHandoff();
+		return;
+	}
 
 	if (bAfterLobby)
 		return;
@@ -123,7 +131,16 @@ function CloseMenus(optional bool bForceClose=false)
 
 function OnMenuOpen(name WidgetPath, KFGFxObject_Menu Widget)
 {
+	local ExtPlayerController EPC;
+
 	Super.OnMenuOpen(WidgetPath, Widget);
+
+	EPC = ExtPlayerController(GetPC());
+	if (EPC != None && EPC.ShouldBlockVampUIForEndMatch())
+	{
+		EPC.CheckVampUIEndMatchHandoff();
+		return;
+	}
 
 	if (!bAfterLobby && Widget == PerksMenu)
 		PerksMenu.ActionScriptVoid("closeContainer");

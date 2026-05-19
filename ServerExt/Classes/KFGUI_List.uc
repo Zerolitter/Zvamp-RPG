@@ -220,7 +220,7 @@ defaultproperties
 {
 	ListItemsPerPage=10
 	ListCount=1
-	BackgroundColor=(R=32,G=3,B=2,A=255)
+	BackgroundColor=(R=8,G=5,B=18,A=255)
 	bDrawBackground=true
 
 	Begin Object Class=KFGUI_ScrollBarV Name=ListScroller

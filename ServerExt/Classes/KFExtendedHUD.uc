@@ -985,7 +985,7 @@ simulated function DrawPetInfo()
 	Canvas.TextSize(S,XL,YL,Sc,Sc);
 	Y-=(YS*MyCurrentPet.Length);
 
-	Canvas.SetDrawColor(120,0,0,145);
+	Canvas.SetDrawColor(54,30,120,145);
 	GUIStyle.DrawRectBox(X, Y, BestPetXL * 1.04, YL, 4);
 
 	Canvas.DrawColor = MakeColor(255,255,255,255);

@@ -79,7 +79,7 @@ Delegate OnComboChanged(KFGUI_ComboBox Sender);
 
 defaultproperties
 {
-	SelectedTextColor=(R=255,G=128,B=128,A=255)
-	TextColor=(R=255,G=255,B=255,A=255)
+	SelectedTextColor=(R=225,G=215,B=245,A=255)
+	TextColor=(R=218,G=207,B=238,A=255)
 	BorderSize=4
 }

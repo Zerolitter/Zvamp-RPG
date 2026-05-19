@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.0.0 - Zvampext First Release (2026-05-15)
+- first Zvampext-branded release while keeping `ServerExt` and `ServerExtMut` package/class names for compatibility
+- added the owned `ServerExtMut.Zvampext_Endless` game class for the current Endless RPG direction
+- added the Perk V2 lobby/in-game UI with perk rail, stat buying, grouped bonus panels, trait configuration, prestige/reset/unload actions, and rotating credits banner
+- added custom trait icon package support through `ServerExtTraitIcons.upk`
+- moved perk stat cost tuning into `KFSkillcosts.ini` with global stats, perk groups, grouped class additions, and `A1`/`B1` front-panel stat groups
+- added `KFZvampCustomItems.ini` support and `ZRefreshnewitems` for custom trader item refreshes
+- added compatibility config helpers for knife, syringe, and camera behavior through `KFZvampKnife.ini`, `KFZvampSyringe.ini`, and `KFZvampCamera.ini`
+- added server-backed admin tools and short console commands for testing and live management, including `admin f`, `admin endwave`, `god`, and `diag`
+- added local compatibility work for ZedSpawner, ZedCosmetic, TF2 Sentry, custom zed class libraries, and conservative TraderGuard usage
+- improved trader stability, custom trader item registration, perk replication, wave transition diagnostics, health/armor caps up to 500, and magazine capacity support up to 2000
+- known note: changing perk through the Zvampext Perk V2 UI is the recommended path for this first release; remaining vanilla trader perk-change polish is deferred
+
 ## v1.18.2 (2024-09-14)
 - fixed the "Demo Professional" trait requirements: now it requires 1 prestige level (as stated in the trait description)
 

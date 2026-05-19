@@ -32,9 +32,9 @@ var localized string CloseButtonToolTip;
 var localized string ColumnMapName;
 var localized string ColumnSequence;
 var localized string ColumnPlayCount;
-var localized string ColumnRating;
 var localized string ColumnGame;
 var localized string ColumnNumVotes;
+var localized string ColumnVoters;
 var localized string Title;
 
 function FColumnItem newFColumnItem(string Text, float Width)
@@ -74,15 +74,14 @@ function InitMenu()
 	CloseButton.ButtonText=CloseButtonText;
 	CloseButton.ToolTip=CloseButtonToolTip;
 
-	MapList.Columns.AddItem(newFColumnItem(ColumnMapName,0.5));
-	MapList.Columns.AddItem(newFColumnItem(ColumnSequence,0.18));
-	MapList.Columns.AddItem(newFColumnItem(ColumnPlayCount,0.18));
-	MapList.Columns.AddItem(newFColumnItem(ColumnRating,0.14));
+	MapList.Columns.AddItem(newFColumnItem(ColumnMapName,0.68));
+	MapList.Columns.AddItem(newFColumnItem(ColumnSequence,0.16));
+	MapList.Columns.AddItem(newFColumnItem(ColumnPlayCount,0.16));
 
 	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnGame,0.2));
-	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnMapName,0.5));
-	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnNumVotes,0.15));
-	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnRating,0.15));
+	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnMapName,0.34));
+	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnNumVotes,0.12));
+	CurrentVotes.Columns.AddItem(newFColumnItem(ColumnVoters,0.34));
 
 	WindowTitle=Title;
 }
@@ -112,7 +111,6 @@ function DrawMenu()
 final function UpdateList()
 {
 	local int i,g,m,Sel;
-	local float V;
 	local KFGUI_ListItem Item,SItem;
 
 	if (GameModeCombo.Values.Length!=RepInfo.GameModes.Length)
@@ -134,15 +132,8 @@ final function UpdateList()
 	{
 		g = RepInfo.ActiveVotes[i].GameIndex;
 		m = RepInfo.ActiveVotes[i].MapIndex;
-		if (RepInfo.Maps[m].NumPlays==0)
-			Item = CurrentVotes.AddLine(RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$RepInfo.ActiveVotes[i].NumVotes$"\n** NEW **",m,
-										RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$MakeSortStr(RepInfo.ActiveVotes[i].NumVotes)$"\n"$MakeSortStr(0));
-		else
-		{
-			V = (float(RepInfo.Maps[m].UpVotes) / float(RepInfo.Maps[m].UpVotes+RepInfo.Maps[m].DownVotes)) * 100.f;
-			Item = CurrentVotes.AddLine(RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$RepInfo.ActiveVotes[i].NumVotes$"\n"$int(V)$"% ("$RepInfo.Maps[m].UpVotes$"/"$(RepInfo.Maps[m].UpVotes+RepInfo.Maps[m].DownVotes)$")",m,
-										RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$MakeSortStr(RepInfo.ActiveVotes[i].NumVotes)$"\n"$MakeSortStr(int(V*100.f)));
-		}
+		Item = CurrentVotes.AddLine(RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$RepInfo.ActiveVotes[i].NumVotes$"\n"$RepInfo.ActiveVotes[i].VoterNames,m,
+									RepInfo.GameModes[g].GameName$"\n"$RepInfo.Maps[m].MapTitle$"\n"$MakeSortStr(RepInfo.ActiveVotes[i].NumVotes)$"\n"$RepInfo.ActiveVotes[i].VoterNames);
 		if (Sel>=0 && Sel==m)
 			SItem = Item;
 	}
@@ -154,7 +145,6 @@ final function UpdateList()
 function ChangeToMaplist(KFGUI_ComboBox Sender)
 {
 	local int i,g;
-	local float V;
 
 	if (RepInfo!=None)
 	{
@@ -164,18 +154,8 @@ function ChangeToMaplist(KFGUI_ComboBox Sender)
 		{
 			if (!BelongsToPrefix(RepInfo.Maps[i].MapName,RepInfo.GameModes[g].Prefix))
 				continue;
-			if (RepInfo.Maps[i].NumPlays==0)
-				MapList.AddLine(RepInfo.Maps[i].MapTitle$"\n"$RepInfo.Maps[i].Sequence$"\n"$RepInfo.Maps[i].NumPlays$"\n** NEW **",i,
-								RepInfo.Maps[i].MapTitle$"\n"$MakeSortStr(RepInfo.Maps[i].Sequence)$"\n"$MakeSortStr(RepInfo.Maps[i].NumPlays)$"\n"$MakeSortStr(0));
-			else
-			{
-				V = RepInfo.Maps[i].UpVotes+RepInfo.Maps[i].DownVotes;
-				if (V==0)
-					V = 100.f;
-				else V = (float(RepInfo.Maps[i].UpVotes) / V) * 100.f;
-				MapList.AddLine(RepInfo.Maps[i].MapTitle$"\n"$RepInfo.Maps[i].Sequence$"\n"$RepInfo.Maps[i].NumPlays$"\n"$int(V)$"% ("$RepInfo.Maps[i].UpVotes$"/"$(RepInfo.Maps[i].UpVotes+RepInfo.Maps[i].DownVotes)$")",i,
-								RepInfo.Maps[i].MapTitle$"\n"$MakeSortStr(RepInfo.Maps[i].Sequence)$"\n"$MakeSortStr(RepInfo.Maps[i].NumPlays)$"\n"$MakeSortStr(int(V*100.f)));
-			}
+			MapList.AddLine(RepInfo.Maps[i].MapTitle$"\n"$RepInfo.Maps[i].Sequence$"\n"$RepInfo.Maps[i].NumPlays,i,
+							RepInfo.Maps[i].MapTitle$"\n"$MakeSortStr(RepInfo.Maps[i].Sequence)$"\n"$MakeSortStr(RepInfo.Maps[i].NumPlays));
 		}
 	}
 }
@@ -221,16 +201,16 @@ function SelectedVoteRow(KFGUI_ListItem Item, int Row, bool bRight, bool bDblCli
 
 defaultproperties
 {
-	XPosition=0.2
-	YPosition=0.1
-	XSize=0.6
-	YSize=0.8
+	XPosition=0.64
+	YPosition=0.08
+	XSize=0.34
+	YSize=0.84
 
 	Begin Object Class=KFGUI_ColumnList Name=CurrentVotesList
 		XPosition=0.015
 		YPosition=0.075
 		XSize=0.98
-		YSize=0.25
+		YSize=0.26
 		ID="Votes"
 		OnSelectedRow=SelectedVoteRow
 		bShouldSortList=true
@@ -239,16 +219,16 @@ defaultproperties
 	End Object
 	Begin Object Class=KFGUI_ColumnList Name=MapList
 		XPosition=0.015
-		YPosition=0.375
+		YPosition=0.385
 		XSize=0.98
-		YSize=0.56
+		YSize=0.55
 		ID="Maps"
 		OnSelectedRow=SelectedVoteRow
 	End Object
 	Begin Object Class=KFGUI_ComboBox Name=GameModeFilter
-		XPosition=0.1
-		YPosition=0.325
-		XSize=0.6
+		XPosition=0.015
+		YPosition=0.335
+		XSize=0.72
 		YSize=0.05
 		OnComboChanged=ChangeToMaplist
 		ID="Filter"
@@ -272,9 +252,9 @@ defaultproperties
 
 	Begin Object Class=KFGUI_RightClickMenu Name=MapRClicker
 		ID="RClick"
-		ItemRows(0)=(Text="Vote this map")
-		ItemRows(1)=(Text="Admin force this map",bDisabled=true)
-		OnSelectedItem=ClickedRow
+	ItemRows(0)=(Text="Vote this map")
+	ItemRows(1)=(Text="Admin force this map",bDisabled=true)
+	OnSelectedItem=ClickedRow
 	End Object
 	MapRightClick=MapRClicker
 }

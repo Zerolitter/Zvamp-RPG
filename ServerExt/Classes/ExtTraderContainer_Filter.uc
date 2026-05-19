@@ -21,6 +21,7 @@ class ExtTraderContainer_Filter extends KFGFxTraderContainer_Filter;
 function SetPerkFilterData(byte FilterIndex)
 {
 	local int i;
+	local int SelectedIndex;
 	local GFxObject DataProvider;
 	local GFxObject FilterObject;
 	local ExtPlayerController KFPC;
@@ -36,13 +37,16 @@ function SetPerkFilterData(byte FilterIndex)
 		KFPRI = KFPlayerReplicationInfo(KFPC.PlayerReplicationInfo);
 		if (KFPRI != none && PrM!=None)
 		{
-			i = Max(PrM.UserPerks.Find(PrM.CurrentPerk),0);
-			SetInt("selectedIndex", i);
+			SelectedIndex = KFPC.GetZvampextTraderFilterIndex();
+			if (FilterIndex <= PrM.UserPerks.Length)
+				SelectedIndex = FilterIndex;
+			KFPC.SetZvampextClientTraderFilterIndex(SelectedIndex);
+			SetInt("selectedIndex", SelectedIndex);
 
 			// Set the title of this filter based on either the perk or the off perk string
-			if (FilterIndex < PrM.UserPerks.Length)
+			if (SelectedIndex < PrM.UserPerks.Length)
 			{
-				SetString("filterText", PrM.UserPerks[FilterIndex].PerkName);
+				SetString("filterText", PrM.UserPerks[SelectedIndex].PerkName);
 			}
 			else
 			{

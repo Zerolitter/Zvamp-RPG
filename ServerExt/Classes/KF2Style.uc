@@ -47,90 +47,47 @@ function InitStyle()
 
 function RenderFramedWindow(KFGUI_FloatingWindow P)
 {
-	local int XS,YS,CornerSlope,TitleHeight;
+	local int XS,YS,TitleHeight;
 
 	XS = Canvas.ClipX-Canvas.OrgX;
 	YS = Canvas.ClipY-Canvas.OrgY;
-	CornerSlope = DefaultHeight*0.4;
 	TitleHeight = DefaultHeight;
 
-	// Frame Header
+	// Frame header.
 	if (P.bWindowFocused)
-		Canvas.SetDrawColor(220,2,2,255);
-	else Canvas.SetDrawColor(100,1,1,P.FrameOpacity);
+		Canvas.SetDrawColor(54,36,112,255);
+	else Canvas.SetDrawColor(26,16,62,P.FrameOpacity);
 	Canvas.SetPos(0,0);
-	DrawCornerTex(CornerSlope,0);
-	Canvas.SetPos(0,TitleHeight);
-	DrawCornerTex(CornerSlope,3);
-	Canvas.SetPos(XS-CornerSlope,0);
-	DrawCornerTex(CornerSlope,1);
-	Canvas.SetPos(XS-CornerSlope,TitleHeight);
-	DrawCornerTex(CornerSlope,2);
-
-	// Header filling
-	Canvas.SetPos(0,CornerSlope);
-	DrawWhiteBox(XS,TitleHeight-CornerSlope);
-	Canvas.SetPos(CornerSlope,0);
-	DrawWhiteBox(XS-(CornerSlope*2),CornerSlope);
+	DrawWhiteBox(XS,TitleHeight);
 
 	// Frame itself.
 	if (P.bWindowFocused)
-		Canvas.SetDrawColor(32,6,6,255);
-	else Canvas.SetDrawColor(16,2,2,P.FrameOpacity);
+		Canvas.SetDrawColor(8,5,18,255);
+	else Canvas.SetDrawColor(5,3,12,P.FrameOpacity);
 	Canvas.SetPos(0,TitleHeight);
-	DrawCornerTex(CornerSlope,0);
-	Canvas.SetPos(XS-CornerSlope,TitleHeight);
-	DrawCornerTex(CornerSlope,1);
-	Canvas.SetPos(0,YS-CornerSlope);
-	DrawCornerTex(CornerSlope,2);
-	Canvas.SetPos(XS-CornerSlope,YS-CornerSlope);
-	DrawCornerTex(CornerSlope,3);
-
-	// Filling
-	Canvas.SetPos(CornerSlope,TitleHeight);
-	DrawWhiteBox(XS-(CornerSlope*2),YS-TitleHeight);
-	Canvas.SetPos(0,TitleHeight+CornerSlope);
-	DrawWhiteBox(CornerSlope,YS-(CornerSlope*2)-TitleHeight);
-	Canvas.SetPos(XS-CornerSlope,TitleHeight+CornerSlope);
-	DrawWhiteBox(CornerSlope,YS-(CornerSlope*2)-TitleHeight);
+	DrawWhiteBox(XS,YS-TitleHeight);
 
 	// Title.
 	if (P.WindowTitle!="")
 	{
 		Canvas.SetDrawColor(250,250,250,P.FrameOpacity);
-		Canvas.SetPos(CornerSlope,0);
+		Canvas.SetPos(6,0);
 		DrawText(DefaultFontSize,P.WindowTitle);
 	}
 }
 
 function RenderWindow(KFGUI_Page P)
 {
-	local int XS,YS,CornerSlope;
+	local int XS,YS;
 
 	XS = Canvas.ClipX-Canvas.OrgX;
 	YS = Canvas.ClipY-Canvas.OrgY;
-	CornerSlope = DefaultHeight*0.4;
 
-	// Frame itself.
 	if (P.bWindowFocused)
-		Canvas.SetDrawColor(64,64,64,255);
-	else Canvas.SetDrawColor(32,32,32,P.FrameOpacity);
+		Canvas.SetDrawColor(10,6,24,255);
+	else Canvas.SetDrawColor(6,4,14,P.FrameOpacity);
 	Canvas.SetPos(0,0);
-	DrawCornerTex(CornerSlope,0);
-	Canvas.SetPos(XS-CornerSlope,0);
-	DrawCornerTex(CornerSlope,1);
-	Canvas.SetPos(0,YS-CornerSlope);
-	DrawCornerTex(CornerSlope,2);
-	Canvas.SetPos(XS-CornerSlope,YS-CornerSlope);
-	DrawCornerTex(CornerSlope,3);
-
-	// Filling
-	Canvas.SetPos(CornerSlope,0);
-	DrawWhiteBox(XS-(CornerSlope*2),YS);
-	Canvas.SetPos(0,CornerSlope);
-	DrawWhiteBox(CornerSlope,YS-(CornerSlope*2));
-	Canvas.SetPos(XS-CornerSlope,CornerSlope);
-	DrawWhiteBox(CornerSlope,YS-(CornerSlope*2));
+	DrawWhiteBox(XS,YS);
 }
 
 function RenderToolTip(KFGUI_Tooltip TT)
@@ -171,10 +128,10 @@ function RenderToolTip(KFGUI_Tooltip TT)
 	Canvas.SetClip(TT.Owner.ScreenSize.X,TT.Owner.ScreenSize.Y);
 
 	// Draw frame.
-	Canvas.SetDrawColor(200,200,80,TT.CurrentAlpha);
+	Canvas.SetDrawColor(76,50,150,TT.CurrentAlpha);
 	Canvas.SetPos(X-2,Y-2);
 	DrawWhiteBox(TX+4,TY+4);
-	Canvas.SetDrawColor(80,10,80,TT.CurrentAlpha);
+	Canvas.SetDrawColor(8,5,18,TT.CurrentAlpha);
 	Canvas.SetPos(X,Y);
 	DrawWhiteBox(TX,TY);
 
@@ -196,24 +153,42 @@ function RenderButton(KFGUI_Button B)
 	local byte i;
 
 	if (B.bDisabled)
-		Canvas.SetDrawColor(32,0,0,255);
+		Canvas.SetDrawColor(10,8,18,255);
 	else if (B.bPressedDown)
-		Canvas.SetDrawColor(255,64,64,255);
+		Canvas.SetDrawColor(76,50,150,255);
 	else if (B.bFocused)
-		Canvas.SetDrawColor(180,45,45,255);
-	else Canvas.SetDrawColor(164,8,8,255);
+		Canvas.SetDrawColor(64,44,132,255);
+	else Canvas.SetDrawColor(48,32,108,255);
 
 	if (B.bIsHighlighted)
 	{
-		Canvas.DrawColor.R = Min(Canvas.DrawColor.R+25,255);
-		Canvas.DrawColor.G = Min(Canvas.DrawColor.G+25,255);
-		Canvas.DrawColor.B = Min(Canvas.DrawColor.B+25,255);
+		Canvas.DrawColor.R = Min(Canvas.DrawColor.R+12,76);
+		Canvas.DrawColor.G = Min(Canvas.DrawColor.G+12,50);
+		Canvas.DrawColor.B = Min(Canvas.DrawColor.B+18,150);
 	}
 
 	Canvas.SetPos(0.f,0.f);
-	if (B.ExtravDir==255)
-		DrawWhiteBox(B.CompPos[2],B.CompPos[3]);
-	else DrawRectBox(0,0,B.CompPos[2],B.CompPos[3],Min(B.CompPos[2],B.CompPos[3])*0.2,B.ExtravDir);
+	DrawWhiteBox(B.CompPos[2],B.CompPos[3]);
+	if (B.bIsHighlighted)
+	{
+		Canvas.SetDrawColor(122,82,196,255);
+		Canvas.SetPos(0.f,0.f);
+		DrawWhiteBox(B.CompPos[2],3.f);
+		Canvas.SetPos(0.f,B.CompPos[3]-3.f);
+		DrawWhiteBox(B.CompPos[2],3.f);
+	}
+	else if (!B.bDisabled && B.bFocused)
+	{
+		Canvas.SetDrawColor(96,68,164,220);
+		Canvas.SetPos(0.f,B.CompPos[3]-2.f);
+		DrawWhiteBox(B.CompPos[2],2.f);
+	}
+	if (!B.bDisabled)
+	{
+		Canvas.SetDrawColor(76,50,150,155);
+		Canvas.SetPos(0.f,0.f);
+		DrawWhiteBox(B.CompPos[2],2.f);
+	}
 
 	if (B.OverlayTexture.Texture!=None)
 	{
@@ -246,27 +221,27 @@ function RenderEditBox(KFGUI_EditBox E)
 
 	if (E.bDisabled)
 	{
-		Canvas.SetDrawColor(4,4,32,255);
-		C = MakeColor(52,52,52,255);
+		Canvas.SetDrawColor(8,6,18,255);
+		C = MakeColor(12,9,24,255);
 	}
 	else if (E.bPressedDown)
 	{
-		Canvas.SetDrawColor(110,110,255,255);
-		C = MakeColor(16,16,186,255);
+		Canvas.SetDrawColor(76,50,150,255);
+		C = MakeColor(14,9,32,255);
 	}
 	else if (E.bFocused || E.bIsTyping)
 	{
-		Canvas.SetDrawColor(120,120,230,255);
-		C = MakeColor(8,8,96,255);
+		Canvas.SetDrawColor(64,44,132,255);
+		C = MakeColor(12,8,28,255);
 	}
 	else
 	{
-		Canvas.SetDrawColor(50,50,186,255);
-		C = MakeColor(8,8,50,255);
+		Canvas.SetDrawColor(34,22,78,255);
+		C = MakeColor(8,5,18,255);
 	}
 
 	Canvas.SetPos(0.f,0.f);
-	DrawRectBox(0,0,E.CompPos[2],E.CompPos[3],E.TextHeight*0.15,1);
+	DrawWhiteBox(E.CompPos[2],E.CompPos[3]);
 
 	Canvas.SetPos(3.f,3.f);
 	Canvas.DrawColor = C;
@@ -278,11 +253,7 @@ function RenderScrollBar(KFGUI_ScrollBarBase S)
 	local float A;
 	local byte i;
 
-	if (S.bDisabled)
-		Canvas.SetDrawColor(48,2,2,255);
-	else if (S.bFocused || S.bGrabbedScroller)
-		Canvas.SetDrawColor(86,8,8,255);
-	else Canvas.SetDrawColor(74,4,4,255);
+	Canvas.SetDrawColor(10,8,18,255);
 
 	Canvas.SetPos(0.f,0.f);
 	DrawWhiteBox(S.CompPos[2],S.CompPos[3]);
@@ -311,10 +282,10 @@ function RenderScrollBar(KFGUI_ScrollBarBase S)
 	S.ButtonOffset = A*(S.CompPos[i]-S.SliderScale);
 
 	if (S.bGrabbedScroller)
-		Canvas.SetDrawColor(140,86,8,255);
+		Canvas.SetDrawColor(122,82,196,255);
 	else if (S.bFocused)
-		Canvas.SetDrawColor(175,48,8,255);
-	else Canvas.SetDrawColor(150,36,4,255);
+		Canvas.SetDrawColor(96,68,164,255);
+	else Canvas.SetDrawColor(76,50,150,255);
 
 	if (S.bVertical)
 	{
@@ -335,20 +306,16 @@ function RenderColumnHeader(KFGUI_ColumnTop C, float XPos, float Width, int Inde
 	if (bSort)
 	{
 		if (bFocus)
-			Canvas.SetDrawColor(175,240,8,255);
-		else Canvas.SetDrawColor(128,200,56,255);
+			Canvas.SetDrawColor(76,50,150,255);
+		else Canvas.SetDrawColor(54,36,112,255);
 	}
 	else if (bFocus)
-		Canvas.SetDrawColor(220,220,8,255);
-	else Canvas.SetDrawColor(220,86,56,255);
+		Canvas.SetDrawColor(76,50,150,255);
+	else Canvas.SetDrawColor(44,30,102,255);
 
 	XS = DefaultHeight*0.125;
 	Canvas.SetPos(XPos,0.f);
-	DrawCornerTexNU(XS,C.CompPos[3],0);
-	Canvas.SetPos(XPos+XS,0.f);
-	DrawWhiteBox(Width-(XS*2),C.CompPos[3]);
-	Canvas.SetPos(XPos+Width-(XS*2),0.f);
-	DrawCornerTexNU(XS,C.CompPos[3],1);
+	DrawWhiteBox(Width,C.CompPos[3]);
 
 	Canvas.SetDrawColor(250,250,250,255);
 	Canvas.SetPos(XPos+XS,(C.CompPos[3]-C.ListOwner.TextHeight)*0.5f);
@@ -357,36 +324,55 @@ function RenderColumnHeader(KFGUI_ColumnTop C, float XPos, float Width, int Inde
 
 function RenderCheckbox(KFGUI_CheckBox C)
 {
+	local float Edge;
+
+	Edge = FMax(2.f,C.CompPos[2]*0.08f);
+
 	if (C.bDisabled)
-		Canvas.SetDrawColor(86,86,86,255);
+		Canvas.SetDrawColor(30,26,42,255);
 	else if (C.bPressedDown)
-		Canvas.SetDrawColor(128,255,128,255);
+		Canvas.SetDrawColor(116,88,194,255);
 	else if (C.bFocused)
-		Canvas.SetDrawColor(150,200,128,255);
-	else Canvas.SetDrawColor(128,186,128,255);
+		Canvas.SetDrawColor(98,72,176,255);
+	else Canvas.SetDrawColor(48,34,104,255);
 
 	Canvas.SetPos(0.f,0.f);
-	Canvas.DrawTileStretched(LoadedTex[0],C.CompPos[2],C.CompPos[3],0,0,LoadedTex[0].GetSurfaceWidth(),LoadedTex[0].GetSurfaceHeight());
+	DrawWhiteBox(C.CompPos[2],C.CompPos[3]);
 
 	if (C.bChecked)
 	{
 		if (C.bDisabled)
-			Canvas.SetDrawColor(128,128,128,255);
-		else Canvas.SetDrawColor(255,255,255,255);
-		Canvas.SetPos(0.f,0.f);
-		Canvas.DrawTile(LoadedTex[1],C.CompPos[2],C.CompPos[3],0,0,LoadedTex[1].GetSurfaceWidth(),LoadedTex[1].GetSurfaceHeight());
+			Canvas.SetDrawColor(72,72,86,255);
+		else Canvas.SetDrawColor(18,198,158,255);
+		Canvas.SetPos(Edge,Edge);
+		DrawWhiteBox(C.CompPos[2]-(Edge*2.f),C.CompPos[3]-(Edge*2.f));
+
+		if (!C.bDisabled)
+		{
+			Canvas.SetDrawColor(110,245,196,130);
+			Canvas.SetPos(Edge,Edge);
+			DrawWhiteBox(C.CompPos[2]-(Edge*2.f),Edge);
+		}
+	}
+	else
+	{
+		if (C.bDisabled)
+			Canvas.SetDrawColor(16,14,24,255);
+		else Canvas.SetDrawColor(10,7,22,255);
+		Canvas.SetPos(Edge,Edge);
+		DrawWhiteBox(C.CompPos[2]-(Edge*2.f),C.CompPos[3]-(Edge*2.f));
 	}
 }
 
 function RenderComboBox(KFGUI_ComboBox C)
 {
 	if (C.bDisabled)
-		Canvas.SetDrawColor(64,4,4,255);
+		Canvas.SetDrawColor(10,8,18,255);
 	else if (C.bPressedDown)
-		Canvas.SetDrawColor(220,56,56,255);
+		Canvas.SetDrawColor(76,50,150,255);
 	else if (C.bFocused)
-		Canvas.SetDrawColor(190,48,48,255);
-	else Canvas.SetDrawColor(186,4,4,255);
+		Canvas.SetDrawColor(64,44,132,255);
+	else Canvas.SetDrawColor(48,32,108,255);
 
 	Canvas.SetPos(0.f,0.f);
 	DrawWhiteBox(C.CompPos[2],C.CompPos[3]);
@@ -412,10 +398,10 @@ function RenderComboList(KFGUI_ComboSelector C)
 	// Draw background.
 	Edge = C.Combo.BorderSize;
 	Canvas.SetPos(0.f,0.f);
-	Canvas.SetDrawColor(128,4,4,255);
+	Canvas.SetDrawColor(50,32,112,255);
 	DrawWhiteBox(C.CompPos[2],C.CompPos[3]);
 	Canvas.SetPos(Edge,Edge);
-	Canvas.SetDrawColor(64,4,4,255);
+	Canvas.SetDrawColor(8,5,18,255);
 	DrawWhiteBox(C.CompPos[2]-(Edge*2.f),C.CompPos[3]-(Edge*2.f));
 
 	// While rendering, figure out mouse focus row.
@@ -438,7 +424,7 @@ function RenderComboList(KFGUI_ComboSelector C)
 			bCheckMouse = false;
 			C.CurrentRow = i;
 			Canvas.SetPos(4.f,YP);
-			Canvas.SetDrawColor(128,48,48,255);
+			Canvas.SetDrawColor(58,38,118,255);
 			DrawWhiteBox(C.CompPos[2]-(Edge*2.f),YL);
 		}
 		Canvas.SetPos(Edge,YP);
@@ -468,10 +454,10 @@ function RenderRightClickMenu(KFGUI_RightClickMenu C)
 	// Draw background.
 	Edge = C.EdgeSize;
 	Canvas.SetPos(0.f,0.f);
-	Canvas.SetDrawColor(148,4,4,255);
+	Canvas.SetDrawColor(50,32,112,255);
 	DrawWhiteBox(C.CompPos[2],C.CompPos[3]);
 	Canvas.SetPos(Edge,Edge);
-	Canvas.SetDrawColor(64,4,4,255);
+	Canvas.SetDrawColor(8,5,18,255);
 	DrawWhiteBox(C.CompPos[2]-(Edge*2.f),C.CompPos[3]-(Edge*2.f));
 
 	// While rendering, figure out mouse focus row.
@@ -493,15 +479,16 @@ function RenderRightClickMenu(KFGUI_RightClickMenu C)
 			bCheckMouse = false;
 			C.CurrentRow = i;
 			Canvas.SetPos(4.f,YP);
-			Canvas.SetDrawColor(128,48,48,255);
+			Canvas.SetDrawColor(58,38,118,255);
 			DrawWhiteBox(C.CompPos[2]-(Edge*2.f),DefaultHeight);
 		}
 
 		Canvas.SetPos(Edge,YP);
 		if (C.ItemRows[i].bSplitter)
 		{
-			Canvas.SetDrawColor(0,0,0,255);
-			Canvas.DrawText("-------",,TextScale,TextScale);
+			Canvas.SetPos(Edge+6.f,YP+(DefaultHeight*0.5f));
+			Canvas.SetDrawColor(76,50,150,255);
+			DrawWhiteBox(C.CompPos[2]-(Edge*2.f)-12.f,1.f);
 		}
 		else
 		{

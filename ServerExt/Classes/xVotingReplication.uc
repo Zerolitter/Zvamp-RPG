@@ -32,6 +32,7 @@ struct FMapEntry
 struct FVotedMaps
 {
 	var int GameIndex,MapIndex,NumVotes;
+	var string VoterNames;
 };
 
 var array<FGameTypeEntry> GameModes;
@@ -149,6 +150,21 @@ reliable client simulated function ClientReceiveVote(int GameIndex, int MapIndex
 	bListDirty = true;
 }
 
+reliable client simulated function ClientReceiveVoteNames(int GameIndex, int MapIndex, string VoterNames)
+{
+	local int i;
+
+	for (i=0; i<ActiveVotes.Length; ++i)
+	{
+		if (ActiveVotes[i].GameIndex==GameIndex && ActiveVotes[i].MapIndex==MapIndex)
+		{
+			ActiveVotes[i].VoterNames = VoterNames;
+			bListDirty = true;
+			return;
+		}
+	}
+}
+
 reliable client simulated function ClientReady(int CurGame)
 {
 	ClientCurrentGame = CurGame;
@@ -199,15 +215,10 @@ reliable client simulated function ClientNotifyVoteWin(int GameIndex, int MapInd
 
 reliable client simulated function ClientOpenMapvote(optional bool bShowRank)
 {
-	local xUI_MapRank R;
-
 	if (bAllReceived)
 		SetTimer(0.001,false,'DelayedOpenMapvote'); // To prevent no-mouse issue when local server host opens it from chat.
 	if (bShowRank)
 	{
-		R = xUI_MapRank(Class'KF2GUIController'.Static.GetGUIController(GetPlayer()).OpenMenu(class'xUI_MapRank'));
-		R.RepInfo = Self;
-
 		if (KFGFxHudWrapper(GetPlayer().myHUD)!=None)
 			KFGFxHudWrapper(GetPlayer().myHUD).HudMovie.DisplayPriorityMessage("MAP VOTE TIME","Cast your votes!",2);
 
@@ -235,11 +246,6 @@ reliable server simulated function ServerCastVote(int GameIndex, int MapIndex, b
 
 reliable server simulated function ServerRankMap(bool bUp)
 {
-	if (!bClientRanked)
-	{
-		bClientRanked = true;
-		VoteHandler.ClientRankMap(Self,bUp);
-	}
 }
 
 function Destroyed()

@@ -26,7 +26,7 @@ struct FRowItem
 };
 var array<FRowItem> ItemRows;
 var int CurrentRow,OldRow;
-var int EdgeSize;
+var int EdgeSize,MinWidthPixels;
 
 function OpenMenu(KFGUI_Base Menu)
 {
@@ -71,7 +71,8 @@ final function ComputeSize()
 			XS = FMax(XS,float(XL)*Scalar);
 		}
 	}
-	XSize = (XS+(EdgeSize*2)) / Owner.ScreenSize.X;
+	XS = FMax(XS+(EdgeSize*2)+24.f,MinWidthPixels);
+	XSize = XS / Owner.ScreenSize.X;
 	YSize = (YS+(EdgeSize*2)) / Owner.ScreenSize.Y;
 }
 
@@ -119,4 +120,5 @@ defaultproperties
 	OldRow=-1
 	bFocusedPostDrawItem=true
 	EdgeSize=4
+	MinWidthPixels=240
 }

@@ -44,7 +44,7 @@ Delegate OnClickRight(KFGUI_Button Sender);
 defaultproperties
 {
 	ButtonText="Button!"
-	TextColor=(R=255,G=255,B=255,A=255)
+	TextColor=(R=225,G=215,B=245,A=255)
 	TextFontInfo=(bClipText=true,bEnableShadow=true)
 	FontScale=1
 }

@@ -21,6 +21,9 @@ class ExtInventoryManager extends KFInventoryManager;
 // Dosh spamming barrier.
 var transient float MoneyTossTime;
 var transient byte MoneyTossCount;
+var bool bOverrideAmmoPickup,bOverrideItemPickup,bOverrideArmorPickup;
+var int DoshThrowAmount;
+var float AmmoPickupValue,ItemPickupValue,ArmorPickupValue;
 
 reliable server function ServerThrowMoney()
 {
@@ -45,6 +48,12 @@ simulated function Inventory CreateInventory(class<Inventory> NewInventoryItemCl
 	local Inventory SupClass;
 
 	SupClass = Super.CreateInventory(NewInventoryItemClass, bDoNotActivate);
+	if (NewInventoryItemClass == class'KFInventory_Money' && ExtInventory_Money(SupClass) == None)
+	{
+		if (SupClass != None)
+			SupClass.Destroy();
+		return Super.CreateInventory(class'ExtInventory_Money', bDoNotActivate);
+	}
 	Wep = KFWeapon(SupClass);
 
 	if (Wep != none)
@@ -59,6 +68,95 @@ simulated function Inventory CreateInventory(class<Inventory> NewInventoryItemCl
 	}
 
 	return SupClass;
+}
+
+function SetAdminPickupOverrides(bool bAmmoPickup, float NewAmmoPickupValue, bool bItemPickup, float NewItemPickupValue, bool bArmorPickup, float NewArmorPickupValue)
+{
+	bOverrideAmmoPickup = bAmmoPickup;
+	AmmoPickupValue = FMax(NewAmmoPickupValue,0.f);
+	bOverrideItemPickup = bItemPickup;
+	ItemPickupValue = FMax(NewItemPickupValue,0.f);
+	bOverrideArmorPickup = bArmorPickup;
+	ArmorPickupValue = FMax(NewArmorPickupValue,0.f);
+}
+
+function SetDoshThrowAmount(int NewDoshThrowAmount)
+{
+	DoshThrowAmount = Clamp(NewDoshThrowAmount, 1, 1000000);
+}
+
+function bool GiveWeaponAmmo(KFWeapon KFW)
+{
+	local bool bAddedAmmo;
+
+	if (!bOverrideAmmoPickup)
+		return Super.GiveWeaponAmmo(KFW);
+
+	if (KFW.AddAmmo(Max(Round(KFW.AmmoPickupScale[0] * KFW.MagazineCapacity[0] * AmmoPickupValue),1)) > 0)
+		bAddedAmmo = true;
+
+	if (KFW.CanRefillSecondaryAmmo())
+	{
+		if (KFW.AddSecondaryAmmo(Max(Round(KFW.AmmoPickupScale[1] * KFW.MagazineCapacity[1] * AmmoPickupValue),1)) > 0)
+			bAddedAmmo = true;
+	}
+
+	return bAddedAmmo;
+}
+
+function bool GiveWeaponsAmmo(bool bIncludeGrenades)
+{
+	local KFWeapon W;
+	local bool bAddedAmmo;
+	local int GrenadeAmount;
+
+	if (!bOverrideAmmoPickup)
+		return Super.GiveWeaponsAmmo(bIncludeGrenades);
+
+	foreach InventoryActors(class'KFWeapon', W)
+	{
+		if (!W.bInfiniteSpareAmmo && GiveWeaponAmmo(W))
+			bAddedAmmo = true;
+	}
+
+	if (bIncludeGrenades)
+	{
+		GrenadeAmount = Max(Round(AmmoPickupValue),1);
+		if (AddGrenades(GrenadeAmount))
+			bAddedAmmo = true;
+	}
+
+	if (bAddedAmmo)
+	{
+		PlayerController(Instigator.Owner).ReceiveLocalizedMessage(class'KFLocalMessage_Game', GMT_Ammo);
+		PlayGiveInventorySound(AmmoPickupSound);
+	}
+	else
+	{
+		PlayerController(Instigator.Owner).ReceiveLocalizedMessage(class'KFLocalMessage_Game', GMT_AmmoIsFull);
+	}
+
+	return bAddedAmmo;
+}
+
+function bool AddArmorFromPickup()
+{
+	local KFPawn_Human KFPH;
+
+	if (!bOverrideArmorPickup)
+		return Super.AddArmorFromPickup();
+
+	KFPH = KFPawn_Human(Instigator);
+	if (KFPH != None && KFPH.Armor != KFPH.GetMaxArmor())
+	{
+		PlayerController(Instigator.Owner).ReceiveLocalizedMessage(class'KFLocalMessage_Game', GMT_PickedupArmor);
+		PlayGiveInventorySound(ArmorPickupSound);
+		KFPH.AddArmor(Max(Round(float(KFPH.GetMaxArmor()) * ArmorPickupValue),1));
+		return true;
+	}
+
+	PlayerController(Instigator.Owner).ReceiveLocalizedMessage(class'KFLocalMessage_Game', GMT_FullArmor);
+	return false;
 }
 
 simulated function CheckForExcessRemoval(KFWeapon NewWeap)
@@ -79,4 +177,9 @@ simulated function CheckForExcessRemoval(KFWeapon NewWeap)
 	}
 
 	Super.CheckForExcessRemoval(NewWeap);
+}
+
+defaultproperties
+{
+	DoshThrowAmount=50
 }

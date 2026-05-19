@@ -25,10 +25,31 @@ var localized string NoPerkSelectedText;
 function Timer()
 {
 	local int i;
+	local ExtPlayerController PC;
 
-	CurrentManager = ExtPlayerController(GetPlayer()).ActivePerkManager;
+	PC = ExtPlayerController(GetPlayer());
+	if (PC==None)
+		return;
+	CurrentManager = PC.ActivePerkManager;
+	if (CurrentManager==None)
+	{
+		if (PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime>=2.f)
+		{
+			LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
+			PC.ZvampextRequestPerkReplication();
+		}
+		return;
+	}
 	if (CurrentManager!=None)
 	{
+		if (CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None)
+			CurrentManager.InitPerks();
+		if ((CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None || (PendingPerk!=None && !PendingPerk.bPerkNetReady))
+			&& PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime>=2.f)
+		{
+			LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
+			PC.ZvampextRequestPerkReplication();
+		}
 		if (PrevPendingPerk!=None)
 		{
 			PendingPerk = CurrentManager.FindPerk(PrevPendingPerk);
@@ -103,6 +124,7 @@ function Timer()
 
 defaultproperties
 {
+	bUseSpawnedHeader=false
 	Components.Remove(UnloadPerkButton)
 	Components.Remove(PrestigePerkButton)
 	Components.Remove(ResetPerkButton)

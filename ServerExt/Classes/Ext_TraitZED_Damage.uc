@@ -23,9 +23,15 @@ var array<float> DamList;
 static function ApplyEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level, optional Ext_TraitDataStore Data)
 {
 	local Ext_T_ZEDHelper H;
+	local int ScaleIndex;
+
+	if (Level <= 0 || Default.DamList.Length == 0)
+		return;
+
+	ScaleIndex = Min(Level - 1, Default.DamList.Length - 1);
 
 	foreach Player.ChildActors(class'Ext_T_ZEDHelper',H)
-		H.SetDamageScale(Default.DamList[Level-1]);
+		H.SetDamageScale(Default.DamList[ScaleIndex]);
 }
 
 static function CancelEffectOn(KFPawn_Human Player, Ext_PerkBase Perk, byte Level, optional Ext_TraitDataStore Data)

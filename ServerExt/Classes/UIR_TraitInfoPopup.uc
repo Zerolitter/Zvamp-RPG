@@ -61,7 +61,6 @@ function ShowTraitInfo(int Index, Ext_PerkBase Perk)
 	MyTraitClass = Perk.PerkTraits[Index].TraitType;
 	MyTrait = new MyTraitClass;
 	WindowTitle = MyTraitClass.Default.TraitName;
-	TraitInfo.SetText(MyTrait.GetPerkDescription());
 
 	OldPoints = -1;
 	OldLevel = -1;
@@ -79,6 +78,7 @@ function Timer()
 	{
 		OldPoints = MyPerk.CurrentSP;
 		OldLevel = MyPerk.PerkTraits[TraitIndex].CurrentLevel;
+		UpdateTraitDescription();
 		if (OldLevel>=MyTraitClass.Default.NumLevels)
 		{
 			YesButton.ButtonText = ButtonBuyDisabledText;
@@ -91,6 +91,26 @@ function Timer()
 			YesButton.SetDisabled(true);
 		else YesButton.SetDisabled(false);
 	}
+}
+
+final function UpdateTraitDescription()
+{
+	local string S;
+	local int Cost;
+
+	if (MyTrait==None || MyTraitClass==None || MyPerk==None)
+		return;
+
+	S = "Current level: #{9FF781}"$MyPerk.PerkTraits[TraitIndex].CurrentLevel$"/"$MyTraitClass.Default.NumLevels$"#{DEF}";
+	S $= "|Available XP: #{F3F781}"$MyPerk.CurrentSP$"#{DEF}";
+	if (MyPerk.PerkTraits[TraitIndex].CurrentLevel<MyTraitClass.Default.NumLevels)
+	{
+		Cost = MyTraitClass.Static.GetTraitCost(MyPerk.PerkTraits[TraitIndex].CurrentLevel);
+		S $= "|Next cost: #{F3F781}"$Cost$"#{DEF}";
+	}
+	else S $= "|Next cost: #{9FF781}MAX#{DEF}";
+
+	TraitInfo.SetText(S$"||"$MyTrait.GetPerkDescription());
 }
 
 function ButtonClicked(KFGUI_Button Sender)
@@ -108,36 +128,36 @@ function ButtonClicked(KFGUI_Button Sender)
 
 defaultproperties
 {
-	XPosition=0.3
-	YPosition=0.15
-	XSize=0.4
-	YSize=0.7
+	XPosition=0.31
+	YPosition=0.24
+	XSize=0.38
+	YSize=0.46
 	bAlwaysTop=true
 	bOnlyThisFocus=true
 
 	Begin Object Class=KFGUI_TextField Name=TraitInfoLbl
 		ID="Info"
 		XPosition=0.05
-		YPosition=0.1
+		YPosition=0.12
 		XSize=0.9
-		YSize=0.8
+		YSize=0.70
 	End Object
 	Begin Object Class=KFGUI_Button Name=BuyButten
 		ID="Yes"
-		XPosition=0.3
-		YPosition=0.91
-		XSize=0.19
-		YSize=0.07
+		XPosition=0.18
+		YPosition=0.86
+		XSize=0.30
+		YSize=0.09
 		ExtravDir=1
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
 	End Object
 	Begin Object Class=KFGUI_Button Name=CancelButten
 		ID="No"
-		XPosition=0.5
-		YPosition=0.91
-		XSize=0.19
-		YSize=0.07
+		XPosition=0.52
+		YPosition=0.86
+		XSize=0.30
+		YSize=0.09
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
 	End Object

@@ -104,6 +104,11 @@ event bool FilterButtonInput(int ControllerId, Name Key, EInputEvent Event, floa
 		{
 			return MyGFxManager.ToggleMenus();
 		}
+		else if (ExtPlayerController(Outer).ShouldBlockVampUIForEndMatch())
+		{
+			ExtPlayerController(Outer).CheckVampUIEndMatchHandoff();
+			return false;
+		}
 		else
 		{
 			MyGUIController.OpenMenu(ExtPlayerController(Outer).MidGameMenuClass);

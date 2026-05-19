@@ -1,119 +1,95 @@
-[img]https://raw.githubusercontent.com/GenZmeY/KF2-Server-Extension/master/PublicationContent/mutbanner.png[/img]
+[h1]Zvampext RPG V2.0.6 - Hotfixes check changelogs[/h1]
+[hr][/hr]
 
-[img]https://img.shields.io/static/v1?logo=GitHub&labelColor=gray&color=blue&logoColor=white&label=&message=Open Source[/img] [img]https://img.shields.io/github/license/GenZmeY/KF2-Server-Extension[/img] [img]https://img.shields.io/steam/downloads/2085786712[/img] [img]https://img.shields.io/steam/favorites/2085786712[/img] [url=https://steamcommunity.com/sharedfiles/filedetails/changelog/2085786712] [img]https://img.shields.io/steam/update-date/2085786712[/img] [img]https://img.shields.io/github/v/tag/GenZmeY/KF2-Server-Extension[/img][/url]
+[b]Current state[/b]
+[h2][b]Stable for now[/b][/h2]
 
-[h1]📋 Description:[/h1]
-This mod replaces current perk system in Killing Floor 2 with a serverside perk progression with RPG elements, which let you buy individual stats and traits.
+[h2][b]Latest Build is playable on the test server[/b][/h2]
+If 1 is set as password, the server is ahead of release. You may still join.
+To join, open the console with [b]F3[/b] and type:
+[code]
+Open play.aleforge.net:31145
+[/code]
+Can't join? Delete both folders:
+[code]
+C:\\Users\\<user>\\Documents\\My Games\\KillingFloor2\\KFGame\\Cache
+C:\\Users\\<user>\\Documents\\My Games\\KillingFloor2\\KFGame\\Unpublished
+[/code]
 
-This is a further development of the ServerExt mutator from [url=https://steamcommunity.com/sharedfiles/filedetails/?id=681440898]Marco[/url] and [url=https://steamcommunity.com/sharedfiles/filedetails/?l=english&id=1207269970]Forrest Mark X[/url].
+Zvampext is a Killing Floor 2 RPG / ServerExt revamp. It keeps the original package and class names, [b]ServerExt[/b] and [b]ServerExtMut[/b], so existing ServerExt-style servers and clients can stay compatible while the visible project branding moves forward as Zvampext.
 
-[h1]🎮 Usage (single player)[/h1]
-[olist]
-[*]Subscribe to this mutator.
-[*]Create a file [b](*)[/b]: [code]C:\Users\<username>\Documents\My Games\KillingFloor2\KFGame\Config\KFServerExtMut.ini[/code]
-with content:
-[code][ServerExtMut.ServerExtMut]
-SettingsInit=0[/code]
-[*]Create a file [b](*)[/b]: [code]C:\Users\<username>\Documents\My Games\KillingFloor2\KFGame\Config\KFxMapVote.ini[/code]
-with content:
-[code][ServerExtMut.xVotingHandler]
-ConfigVersion=0[/code]
-[*]Create a file [b](*)[/b]: [code]C:\Users\<username>\Documents\My Games\KillingFloor2\KFGame\Config\KFServerExt.ini[/code]
-with content: [url=https://gist.githubusercontent.com/GenZmeY/616b6f845f9829c93976f42f6c48505a/raw/1a8c8409d61a2908d5c854ced0932b8ed43a7f51/KFServerExt-Default.ini]KFServerExt.ini (default)[/url]
-[*]Launch KF2.
-[*]Open console (~) and start any map with the mutator (this will generate the contents of the configs):
-[code]open KF-BioticsLab?Mutator=ServerExtMut.ServerExtMut[/code]
-[*]Close the game and configure the mutator (see [b]⚙️ Setup[/b] link below).
-[*]Launch KF2 again, open the console, and start the game:
-[code]KF-BioticsLab?Game=KFGameContent.KFGameInfo_Survival?Difficulty=3?GameLength=2?Mutator=ServerExtMut.ServerExtMut[/code]
-(replace the map and set/add parameters you need).
-[/olist]
+[url=https://steamcommunity.com/workshop/filedetails/discussion/3726663955/841754306657910790/][h2][b]CLICK HERE - A personal note on the motivation behind this project[/b][/h2][/url]
 
-[h1]🖥️ Usage (server)[/h1]
-[b]Note:[/b] [i]If this is unclear, first read: [url=https://wiki.killingfloor2.com/index.php?title=Dedicated_Server_(Killing_Floor_2)][u]Dedicated Server Guide (KF2 wiki)[/u][/url][/i]
-[olist]
-[*]Open [b]PCServer-KFEngine.ini[/b] / [b]LinuxServer-KFEngine.ini[/b].
-[*]Find [b][IpDrv.TcpNetDriver][/b] section and ensure line exists (add if missing):
-[code]DownloadManagers=OnlineSubsystemSteamworks.SteamWorkshopDownload[/code]
-(If there are several [b]DownloadManagers[/b] then the line above should be the first)
-[*]Add the following string to the [b][OnlineSubsystemSteamworks.KFWorkshopSteamworks][/b] section (create one if it doesn't exist):
-[code]ServerSubscribedWorkshopItems=2085786712[/code]
-[*]Start server and wait for mutator download.
-[*]When the download is complete, stop the server.
-[*]Create a file [b](*)[/b]: [code]<kf2-server>\KFGame\Config\KFServerExtMut.ini[/code]
-with content:
-[code][ServerExtMut.ServerExtMut]
-SettingsInit=0[/code]
-[*]Create a file [b](*)[/b]: [code]<kf2-server>\KFGame\Config\KFxMapVote.ini[/code]
-with content:
-[code][ServerExtMut.xVotingHandler]
-ConfigVersion=0[/code]
-[*]Create a file [b](*)[/b]: [code]<kf2-server>\KFGame\Config\KFServerExt.ini[/code]
-with content: [url=https://gist.githubusercontent.com/GenZmeY/616b6f845f9829c93976f42f6c48505a/raw/1a8c8409d61a2908d5c854ced0932b8ed43a7f51/KFServerExt-Default.ini]KFServerExt.ini (default)[/url]
-[*]Add mutator to server start parameters: [code]?Mutator=ServerExtMut.ServerExtMut[/code] and start the server (this will generate the contents of the configs).
-[*]Stop the server and configure the mutator (see [b]⚙️ Setup[/b] link below).
-[*]Start the server.
-[/olist]
+https://github.com/Zerolitter/Zvamp-RPG/blob/revamp-edition/README.md
 
-[h1]🐞 (*) Buggy config initialization[/h1]
-This mutator (like many others) relies on UnrealScript's default values (0 for int type) to detect first-time use and generate a config.
-However, the game contains a bug that initializes unset values to random data, which can lead to incorrect settings or missing configs.
+[hr][/hr]
 
-As a workaround, I recommend explicitly setting version variables in the configs during the first initialization.
-
-Unfortunately, I can't fix this issue because it's a game engine problem (not the mutator's fault).
-
-[h1]📚 More info[/h1]
+[h1]Zvamp RPG Features[/h1]
 [list]
-[*][h1][url=https://steamcommunity.com/workshop/filedetails/discussion/2085786712/4241773359646835902/]⚙️ Setup[/url][/h1]
-[*][h1][url=https://steamcommunity.com/workshop/filedetails/discussion/2085786712/4241773359647296750/]🌟 Examples[/url][/h1]
-[*][h1][url=https://steamcommunity.com/workshop/filedetails/discussion/2085786712/2942494909176752884]🌍 Localization[/url][/h1]
+[*]Full RPG perk progression with levels, prestige, star points, and configurable stat investment.
+[*]10 playable RPG perk classes based on the core Killing Floor 2 perk lineup.
+[*]Per-perk skill trees with upgradeable stats such as damage, reload, health, recoil, spread, ammo, and utility bonuses.
+[*]Prestige progression with extra star-point scaling for long-term character growth.
+[*]Custom V2 perk menu with lobby and in-game perk management.
+[*]Configurable perk costs, level caps, prestige limits, and stat-buy steps through server config.
+[*]Server-side perk replication recovery to reduce rare lobby perk-loading issues.
+[*]Custom trader item support through [b]KFZvampCustomItems.ini[/b].
+[*]Live custom item refresh command through [b]ZRefreshNewItems[/b].
+[*]Admin playtest commands for faster testing, including [b]DoshMe[/b] and [b]ProgressWave[/b].
+[*]Trader-time movement boost support through [b]KFZvampKnife.ini[/b].
+[*]Configurable knife movement, parry block, and trader-window speed behavior.
+[*]Optional UI-only compatibility mode through [b]bZvampextUIOnly[/b].
+[*]Pickup and grenade override controls for grenade damage, grenade radius, ammo pickup, and armor pickup scaling.
+[*]TraderGuard-style trader protection and skip-trader flow support.
+[*]Endless-mode stability improvements around trader opening, skip-trader handling, and wave transitions.
+[*]ZedSpawner compatibility work for custom zed class lists.
+[*]Compatibility notes and helper config support for ZedSpawner, ZedCosmetic, TF2 Sentry, TraderGuard, Loot Beams, FriendlyHUD, and AutoHealing.
+[*]Custom zed XP support for external zed packages.
+[*]Admin/live-test tooling for diagnostics, god mode, spawn pause/resume, end-wave flow, and max-monster tuning.
+[*]Configurable pickup, grenade, health, armor, magazine, trader, camera, knife, and syringe behavior.
+[*]Steam Workshop package support while keeping the original [b]ServerExt[/b] and [b]ServerExtMut[/b] package names for compatibility.
 [/list]
 
-[h1]🤐 If not working or you have no text[/h1]
-Older versions of ServerExt have the same file names - this can cause conflicts if you subscribe to them. Therefore:
-[olist]
-[*]Check your subscriptions. If you are subscribed to other versions of the mutator, cancel them.
-[*]Clear the cache, it's here:
-[b]Client:[/b]
-[code]C:\Users\<username>\Documents\My Games\KillingFloor2\KFGame\Cache\[/code]
-[b]Server:[/b]
-[code]<KF2_DIR>/Binaries/Win64/steamapps/workshop/content/232090/
-<KF2_DIR>/KFGame/Cache/[/code]
-[*]Delete all ServerExt localization files. It's here (client only):
-[code]C:\Users\<username>\Documents\My Games\KillingFloor2\KFGame\Localization\[/code]
-Check all folders and delete all ServerExt.* files you find.
-[*]Try starting the game/server again.
-[/olist]
-
-[h1]🌍 Credits[/h1]
-[b]Developers:[/b]
+[h1]Known first-release notes[/h1]
 [list]
-[*][url=https://steamcommunity.com/profiles/76561197975509070]Marco[/url]
-[*][url=https://steamcommunity.com/profiles/76561197997881512]ForrestMarkX[/url]
-[*][url=https://steamcommunity.com/profiles/76561198001617867]GenZmeY[/url]
-[*][url=https://steamcommunity.com/profiles/76561198143883210]inklesspen[/url]
-[*][url=https://steamcommunity.com/profiles/76561198042219365]secret[/url]
-[*][url=https://steamcommunity.com/profiles/76561198004271210]Scaredkid93[/url]
-[*][url=https://steamcommunity.com/profiles/76561198200630473/]小曦曦[/url]
-[/list]
-[b]Translators:[/b]
-[list]
-[*][url=https://steamcommunity.com/profiles/76561198001617867]GenZmeY[/url] - Russian [RUS]
-[*][url=https://steamcommunity.com/profiles/76561197967822972]MilkTeaFox[/url] - Traditional Chinese [CHT]
-[*][url=https://steamcommunity.com/profiles/76561198930643117]あさぴっぴ1020[/url] - Japanese [JPN]
-[*][url=https://steamcommunity.com/profiles/76561198080866131]Jason Voorehes [/url] - Spanish [ESN]
-[*][url=https://steamcommunity.com/profiles/76561198200630473/]小曦曦[/url] - Simplified Chinese [CHN]
-[/list]
-[b]Other Credits:[/b]
-[list]
-[*][url=https://steamcommunity.com/profiles/76561198105638699]Cloud[/url] - Help with instructions for solving the issue of missing configs.
-[*]The cat on the cover is Meawbin (original character by [url=https://x.com/horrormove]Cotton Valent[/url]).
+[*]Changing perk through the Zvampext Perk V2 UI is the recommended path.
 [/list]
 
-[h1]☑️ Status: Completed[/h1]
-✔️ The mutator works with the current version of the game (v1150) and I have implemented everything I planned.
-⛔️ Development has stopped: I no longer have the time or motivation to maintain this mod. No further updates or bug fixes are planned.
 
-[h1]📜 Sources[/h1]
-https://github.com/GenZmeY/KF2-Server-Extension [b](GPL-3.0-or-later)[/b]
+
+[h1]Implemented / integrated in Zvampext so far:[/h1]
+
+[b]ServerExt / ServerExtMut foundation: [/b]kept original package names for compatibility.
+[b]SafeMutLoader path:[/b] local server-compatible wrapper work for loading through SML. [u](The option is there, but the setup process is fairly complicated and you would need to figure it out yourself.)[/u]
+[b]TraderGuard: [/b]trader protection, open/skip trader handling, public RvOpenTrader option.
+[b]ZedSpawner:[/b] compatibility work for custom zed lists and XP handling.
+[b]TF2 Sentry: [/b]custom trader item support, Sentry Hammer/Wrench alias, 5000 price fix path. [u](Remember to add the workshopID&Package to server)[/u]
+[b]AutoHealing:[/b] staged/helper integration support.
+[b]ZedCosmetic:[/b] compatibility wrapper/testing work, though not a core required piece.
+[b]CustomSyringe: [/b]helper config support.
+[b]KFStaticCameraMod [/b]/ camera behavior: helper config support.
+[b]Knife / TraderDash-style speed behavior:[/b] trader-time speed boost and knife movement config support.
+[b]Loot Beams / FriendlyHUD: [/b]compatibility notes/helper support rather than deep built-in behavior.
+[b]Custom trader items:[/b] via KFZvampCustomItems.ini and ZRefreshNewItems. AKA [u]Traderguard is replacement of CTI&TIM[/u] Dont want this? Use [u]bZvampextUIOnly=True[/u]
+
+
+
+[h1]Credits[/h1]
+[list]
+[*]GenZmeY for ServerExt, CTI, and ZedSpawner work.
+[*]Marco and Forrest Mark X for the original ServerExt foundation.
+[*]HickDead_ for TIM.
+[*]humam2104 for CustomSyringe.
+[*][Insert Name Here] for KFStaticCameraMod.
+[*]Ameisenber for WeaponizedMayhem.
+[*]All open-source repositories, workshop authors, comment sections, and community notes that made the rebuild possible.
+[*]Zerolitter for the effort behind this Zvampext rebuild.
+[/list]
+
+[h1]License and source[/h1]
+Zvampext is based on ServerExt and remains GPL-3.0-or-later.
+
+Source foundation:
+[code]
+https://github.com/GenZmeY/KF2-Server-Extension
+[/code]

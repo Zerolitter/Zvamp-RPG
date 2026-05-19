@@ -46,6 +46,7 @@ defaultproperties
 {
 	PerkIcon=Texture2D'UI_PerkIcons_TEX.UI_PerkIcon_Sharpshooter'
 	DefTraitList.Add(class'Ext_TraitWPSharp')
+	DefTraitList.Add(class'Ext_TraitRackEmUp')
 	DefTraitList.Add(class'Ext_TraitRanger')
 	DefTraitList.Add(class'Ext_TraitDireReload')
 	DefTraitList.Add(class'Ext_TraitEliteReload')

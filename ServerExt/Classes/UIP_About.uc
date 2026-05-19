@@ -1,110 +1,92 @@
 // This file is part of Server Extension.
 // Server Extension - a mutator for Killing Floor 2.
-//
-// Copyright (C) 2016-2024 The Server Extension authors and contributors
-//
-// Server Extension is free software: you can redistribute it
-// and/or modify it under the terms of the GNU General Public License
-// as published by the Free Software Foundation,
-// either version 3 of the License, or (at your option) any later version.
-//
-// Server Extension is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License along
-// with Server Extension. If not, see <https://www.gnu.org/licenses/>.
 
 Class UIP_About extends KFGUI_MultiComponent;
 
-var const string ForumURL;
-
-var KFGUI_TextField About;
-var KFGUI_Button AuthorButton;
-var KFGUI_Button Forumbutton;
-
-var localized string AuthorButtonText;
-var localized string AuthorButtonTooltip;
-var localized string ForumButtonText;
-var localized string ForumButtonTooltip;
-
-var localized string MarcoText;
-var localized string CreditsText;
-var localized string ForrestMarkXText;
-var localized string SheepText;
-var localized string MysterialText;
-var localized string PostText;
-var localized string InklesspenText;
-var localized string GenzmeyText;
+var KFGUI_TextField HelpText;
+var string LastHelpText;
 
 function InitMenu()
 {
-	About = KFGUI_TextField(FindComponentID('About'));
-	AuthorButton = KFGUI_Button(FindComponentID('Author'));
-	Forumbutton = KFGUI_Button(FindComponentID('Forum'));
+	HelpText = KFGUI_TextField(FindComponentID('Help'));
 
 	Super.InitMenu();
-
-	About.SetText("#{F3E2A9}Server Extension Mod#{DEF} - "$MarcoText$" Marco||"$CreditsText$":|#{01DF3A}Forrest Mark X#{DEF} - "$ForrestMarkXText$"|#{FF00FF}Sheep#{DEF} - "$SheepText$"|inklesspen - "$InklesspenText$"|GenZmeY - "$GenzmeyText$"|Mysterial - "$MysterialText$"|"$PostText);
-	AuthorButton.ButtonText=AuthorButtonText;
-	AuthorButton.Tooltip=AuthorButtonTooltip;
-	Forumbutton.ButtonText=ForumButtonText;
-	Forumbutton.Tooltip=ForumButtonTooltip;
+	UpdateHelpText();
 }
 
-private final function UniqueNetId GetAuthID()
+function DrawMenu()
 {
-	local UniqueNetId Res;
+	local float W,H;
 
-	class'OnlineSubsystem'.Static.StringToUniqueNetId("0x0110000100E8984E",Res);
-	return Res;
+	W = CompPos[2];
+	H = CompPos[3];
+
+	Canvas.SetDrawColor(34,34,38,105);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,H*0.82);
+	Canvas.SetDrawColor(82,55,142,205);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,4.f);
+	Canvas.SetPos(W*0.025,H*0.055+H*0.82-4.f);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,4.f);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(4.f,H*0.82);
+	Canvas.SetPos(W*0.025+W*0.93-4.f,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(4.f,H*0.82);
+
+	Super.DrawMenu();
+	UpdateHelpText();
 }
 
-function ButtonClicked(KFGUI_Button Sender)
+function UpdateHelpText()
 {
-	switch (Sender.ID)
+	local ExtPlayerController EPC;
+	local string S;
+
+	EPC = ExtPlayerController(GetPlayer());
+
+	S = "#{9B7CFF}Zvampext Help#{DEF}||";
+	S $= "Commands shown here are server-side helpers exposed by the current Zvampext configuration.||";
+	S $= "#{D8CFFF}Active commands#{DEF}|";
+	if (EPC!=None && EPC.bRevampTraderGuardEnabled && EPC.bRevampTraderGuardPublicOpenTrader)
+		S $= "#{10D5C7}ACTIVE#{DEF}  RvOpenTrader - open trader time/menu when TraderGuard allows public access.|";
+	else
+		S $= "#{777088}DISABLED#{DEF}  RvOpenTrader - admin has not enabled public open trader.|";
+	S $= "#{9B7CFF}DoshThrowAmount <amount>#{DEF} - set your thrown dosh bundle amount.|";
+	S $= "#{9B7CFF}DoshThrow <amount>#{DEF} - short alias for DoshThrowAmount.|";
+	S $= "#{9B7CFF}ZClassResetyesimcertain#{DEF} - reset your current RPG class after you really mean it.|";
+
+	S $= "||#{D8CFFF}Planned section#{DEF}|";
+	S $= "#{777088}V3#{DEF}  Swappable grenade loadout - choose perk grenade style when backend support exists.|";
+	S $= "#{777088}V3#{DEF}  Pet controls - follow, hold, defend, or roam with owned helpers.|";
+	S $= "#{777088}V3#{DEF}  Player vote ProgressWave - optional vote-gated wave progression helper.|";
+	S $= "#{777088}V3#{DEF}  Admin weapon rules - server-side damage, magazine, and weapon behavior controls.|";
+
+	S $= "||#{D8CFFF}Admin notes#{DEF}|";
+	S $= "AdminMenu - open the Zvampext admin dashboard.|";
+	S $= "Admin BuildID - print the loaded ServerExt and ServerExtMut build labels.|";
+	S $= "Admin zCheckHands - print the weapon/item class currently held in your hands.|";
+	S $= "Admin DoshMe <value> - add dosh for fast trader testing.|";
+	S $= "Admin ProgressWave <x> - advance waves through the wave-end cleanup flow.|";
+	S $= "Admin ZRefreshNewItems - refresh custom trader item entries.|";
+	S $= "Fast Forward remains an admin-only trader control. Public players should use the normal Skip Trader vote unless a separate public command is enabled.";
+
+	if (S!=LastHelpText)
 	{
-	case 'Forum':
-		class'GameEngine'.static.GetOnlineSubsystem().OpenURL(ForumURL);
-		break;
-	case 'Author':
-		OnlineSubsystemSteamworks(class'GameEngine'.static.GetOnlineSubsystem()).ShowProfileUI(0,,GetAuthID());
-		break;
+		LastHelpText = S;
+		HelpText.SetText(S);
 	}
 }
 
 defaultproperties
 {
-	ForumURL="https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712"
-
-	Begin Object Class=KFGUI_TextField Name=AboutText
-		ID="About"
-		XPosition=0.025
-		YPosition=0.025
-		XSize=0.95
-		YSize=0.8
+	Begin Object Class=KFGUI_TextField Name=HelpField
+		ID="Help"
+		XPosition=0.05
+		YPosition=0.08
+		XSize=0.90
+		YSize=0.78
+		FontScale=1
 	End Object
-	Begin Object Class=KFGUI_Button Name=AboutButton
-		ID="Author"
-		XPosition=0.7
-		YPosition=0.92
-		XSize=0.27
-		YSize=0.06
-		OnClickLeft=ButtonClicked
-		OnClickRight=ButtonClicked
-	End Object
-	Begin Object Class=KFGUI_Button Name=ForumButton
-		ID="Forum"
-		XPosition=0.7
-		YPosition=0.84
-		XSize=0.27
-		YSize=0.06
-		OnClickLeft=ButtonClicked
-		OnClickRight=ButtonClicked
-	End Object
-
-	Components.Add(AboutText)
-	Components.Add(AboutButton)
-	Components.Add(ForumButton)
+	Components.Add(HelpField)
 }

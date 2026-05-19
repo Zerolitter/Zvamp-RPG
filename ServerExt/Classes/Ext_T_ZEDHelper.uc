@@ -112,7 +112,7 @@ final function SpawnHelper()
 	local Controller C;
 	local Ext_T_MonsterPRI PRI;
 	local AkBaseSoundObject TempSound;
-	local bool bFinalWave;
+	local bool bAvoidBossPet;
 
 	if (PawnOwner.PlayerReplicationInfo==None || !HasLiveZeds())
 	{
@@ -120,10 +120,10 @@ final function SpawnHelper()
 		return;
 	}
 	NoLiveCounter = 5;
-	bFinalWave = KFGameReplicationInfo(WorldInfo.GRI).IsFinalWave();
-	if (bFinalWave && Class<KFPawn_MonsterBoss>(PrevMonster)!=None)
+	bAvoidBossPet = KFGameReplicationInfo(WorldInfo.GRI).IsFinalWave() || WorldInfo.Game.IsA('KFGameInfo_Endless');
+	if (bAvoidBossPet && Class<KFPawn_MonsterBoss>(PrevMonster)!=None)
 		PrevMonster = None;
-	MC = (PrevMonster!=None ? PrevMonster : PickRandomMonster(CurLevel,bFinalWave));
+	MC = (PrevMonster!=None ? PrevMonster : PickRandomMonster(CurLevel,bAvoidBossPet));
 
 	if (MC!=None)
 	{

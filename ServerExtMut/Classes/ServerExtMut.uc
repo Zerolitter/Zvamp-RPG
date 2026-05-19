@@ -44,7 +44,8 @@ struct FSavedInvEntry
 };
 var array<FSavedInvEntry> PlayerInv;
 
-var config array<string> PerkClasses,CustomChars,AdminCommands,BonusGameSongs,BonusGameFX;
+var config array<string> PerkClasses,CustomChars,AdminCommands,BonusGameSongs,BonusGameFX,RevampAdminSteamIDs,SpawnedPerkUILayout,MidGameMenuLayout,AutoMessageTexts;
+var config array<string> ZvampextAdminIDs;
 var config array<CFGCustomZedXP> CustomZedXP;
 var array< class<Ext_PerkBase> > LoadedPerks;
 var array<FCustomCharEntry> CustomCharList;
@@ -58,21 +59,29 @@ var private const array<string> DevList;
 var transient private array<UniqueNetId> DevNetID;
 var ExtXMLOutput FileOutput;
 var transient class<DamageType> LastKillDamageType;
+var transient bool bZvampextTraderItemsApplied;
+var transient bool bZvampCompatDefaultsApplied;
 
 var SoundCue BonusGameCue;
 var Object BonusGameFXObj;
+var bool bSMLRuntimeActor,bSMLTraderAutoPaused;
 
-const SettingsTagVer=14;
+const SettingsTagVer=17;
 var KFGameReplicationInfo KF;
 var config int SettingsInit;
-var config int ForcedMaxPlayers,PlayerRespawnTime,LargeMonsterHP,StatAutoSaveWaves,MinUnloadPerkLevel,PostGameRespawnCost,MaxTopPlayers;
-var config float UnloadPerkExpCost;
+var config int ForcedMaxPlayers,PlayerRespawnTime,LargeMonsterHP,StatAutoSaveWaves,MinUnloadPerkLevel,PostGameRespawnCost,MaxTopPlayers,DoshThrowAmount,AutoMessageIntervalSeconds,PlayerProgressWaveVoteMax,PlayerProgressWaveVoteSeconds,NextMapChoiceWave,NextMapChoiceSeconds;
+var config float UnloadPerkExpCost,AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue,ZvampextTraderSpeedBoostMultiplier,PlayerProgressWaveVotePct,NextMapChoicePct;
 var globalconfig string ServerMOTD,StatFileDir;
+var config string AutoMessageText,AutoMessageColor;
+var string ZvampextBuildID;
 var array<Controller> PendingSpawners;
-var int LastWaveNum,NumWaveSwitches;
+var int LastWaveNum,NumWaveSwitches,AutoMessageIndex,ProgressWaveVoteTarget,NextMapChoiceWaveNum;
 var ExtSpawnPointHelper SpawnPointer;
-var bool bRespawnCheck,bSpecialSpawn,bGameHasEnded,bIsPostGame;
-var config bool bKillMessages,bDamageMessages,bEnableMapVote,bNoAdminCommands,bNoWebAdmin,bNoBoomstickJumping,bDumpXMLStats,bRagdollFromFall,bRagdollFromMomentum,bRagdollFromBackhit,bAddCountryTags,bThrowAllWeaponsOnDeath;
+var bool bRespawnCheck,bSpecialSpawn,bGameHasEnded,bIsPostGame,bRevampSpawnsPaused,bProgressWaveVoteActive,bNextMapChoiceActive,bNextMapChoiceOffered;
+var config bool bKillMessages,bDamageMessages,bEnableMapVote,bNoAdminCommands,bNoWebAdmin,bNoBoomstickJumping,bDumpXMLStats,bRagdollFromFall,bRagdollFromMomentum,bRagdollFromBackhit,bAddCountryTags,bThrowAllWeaponsOnDeath,bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader,bZvampextAutoEnableCheats,bZvampextUIOnly,bVampUIEndMatchEnabled,bZvampextAutoPauseTrader,bZvampextTraderSpeedBoost,bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup,bAutoMessageEnabled,bPlayerProgressWaveVoteEnabled,bNextMapChoiceEnabled;
+var transient float NextAutoMessageTime;
+var array<ExtPlayerController> ProgressWaveYesVotes,ProgressWaveNoVotes,NextMapYesVotes,NextMapNoVotes;
+var ExtPlayerController ProgressWaveVoteCaller;
 
 var KFGI_Access KFGIA;
 
@@ -83,6 +92,206 @@ struct CustomZedXPStruct
 	var float XPValues[4];
 };
 var array<CustomZedXPStruct> CustomZedXPArray;
+
+final function bool AddPerkClassIfMissing(class<Ext_PerkBase> P)
+{
+	local int i;
+	local string S;
+
+	if (P==None)
+		return false;
+
+	S = PathName(P);
+	for (i=0; i<PerkClasses.Length; ++i)
+		if (PerkClasses[i] ~= S)
+			return false;
+
+	PerkClasses.AddItem(S);
+	return true;
+}
+
+final function bool RemoveDuplicatePerkClasses()
+{
+	local int i,j;
+	local bool bChanged;
+
+	for (i=PerkClasses.Length-1; i>=0; --i)
+	{
+		if (PerkClasses[i]=="")
+		{
+			PerkClasses.Remove(i,1);
+			bChanged = true;
+		}
+	}
+
+	for (i=0; i<PerkClasses.Length; ++i)
+	{
+		for (j=PerkClasses.Length-1; j>i; --j)
+		{
+			if (PerkClasses[i] ~= PerkClasses[j])
+			{
+				PerkClasses.Remove(j,1);
+				bChanged = true;
+			}
+		}
+	}
+
+	return bChanged;
+}
+
+final function bool EnsureCoreRPGPerkClasses()
+{
+	local bool bChanged;
+
+	bChanged = RemoveDuplicatePerkClasses();
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkBerserker') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkCommando') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkFieldMedic') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkSupport') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkDemolition') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkFirebug') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkGunslinger') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkSharpshooter') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkSWAT') || bChanged;
+	bChanged = AddPerkClassIfMissing(class'Ext_PerkSurvivalist') || bChanged;
+
+	return bChanged;
+}
+
+final function string DefaultSpawnedPerkUILayout()
+{
+	return "HeaderX=0.075;HeaderY=0.015;HeaderW=0.49;HeaderH=0.13;HeaderAlpha=70;RailX=0.025;RailY=0.055;RailW=0.09;RailH=1.0;RailTuck=-0.35;RailPoppedTileScale=1.0;RailInactiveAlpha=45;RailPendingAlpha=150;RailSelectedAlpha=190;RailInactiveR=32;RailInactiveG=32;RailInactiveB=128;RailPendingR=164;RailPendingG=86;RailPendingB=32;RailSelectedR=164;RailSelectedG=164;RailSelectedB=32;"
+		$"SkillX=0.10;SkillY=0.16;SkillW=0.47;SkillH=0.74;SkillLeftBorderAlpha=0;DividerX=0.57;DividerY=0.16;DividerW=0.015;DividerH=0.74;SummaryX=0.585;SummaryY=0.16;SummaryW=0.405;SummaryH=0.74;"
+		$"StatsX=0.115;StatsY=0.29;StatsW=0.43;StatsH=0.47;SkillsLabelX=0.115;SkillsLabelY=0.18;SkillsLabelW=0.16;SkillsLabelH=0.045;BonusesLabelX=0.61;BonusesLabelY=0.18;BonusesLabelW=0.22;BonusesLabelH=0.045;"
+		$"BonusSummaryX=0.62;BonusSummaryY=0.25;BonusSummaryW=0.34;BonusSummaryH=0.36;LoadoutLabelX=0.61;LoadoutLabelY=0.66;LoadoutLabelW=0.28;LoadoutLabelH=0.04;LoadoutSummaryX=0.675;LoadoutSummaryY=0.77;LoadoutSummaryW=0.15;LoadoutSummaryH=0.055;"
+		$"ConfigureX=0.125;ConfigureY=0.82;ConfigureW=0.40;ConfigureH=0.06;GrenadePrevX=0.61;GrenadePrevY=0.77;GrenadePrevW=0.055;GrenadePrevH=0.055;GrenadeNextX=0.80;GrenadeNextY=0.77;GrenadeNextW=0.055;GrenadeNextH=0.055;"
+		$"ResetX=0.13;ResetY=0.215;ResetW=0.12;ResetH=0.045;UnloadX=0.255;UnloadY=0.215;UnloadW=0.12;UnloadH=0.045;PrestigeX=0.38;PrestigeY=0.215;PrestigeW=0.12;PrestigeH=0.045";
+}
+
+final function string DefaultMidGameMenuLayout()
+{
+	return "MenuX=0.1;MenuY=0.1;MenuW=0.8;MenuH=0.8;PagerX=0.01;PagerY=0.08;PagerW=0.98;PagerH=0.775;PagerBorder=0.04;PagerButtonSize=0.08;"
+		$"OuterR=24;OuterG=24;OuterB=28;OuterA=48;BackX=0;BackY=0;BackW=1;BackH=1;BackR=40;BackG=40;BackB=44;BackA=56;FooterY=0.89;FooterH=0.045;"
+		$"ButtonPanelX=0.09;ButtonPanelY=0.925;ButtonPanelW=0.82;ButtonPanelH=0.045;ButtonPanelR=96;ButtonPanelG=88;ButtonPanelB=92;ButtonPanelA=175;ButtonPanelRailR=12;ButtonPanelRailG=10;ButtonPanelRailB=18;ButtonPanelRailA=210;ButtonPanelAccentR=76;ButtonPanelAccentG=50;ButtonPanelAccentB=150;ButtonPanelAccentA=0;ButtonPanelAccentW=0.007;"
+		$"SpectateX=0.09;SpectateW=0.12;SkipTraderX=0.22;SkipTraderW=0.13;MapVoteX=0.36;MapVoteW=0.12;SettingsX=0.49;SettingsW=0.13;CloseX=0.63;CloseW=0.09;DisconnectX=0.73;DisconnectW=0.11;ExitX=0.85;ExitW=0.06";
+}
+
+final function string BuildSpawnedPerkUILayoutString()
+{
+	local int i;
+	local string S;
+
+	for (i=0; i<SpawnedPerkUILayout.Length; ++i)
+		S $= SpawnedPerkUILayout[i];
+	if (S=="")
+		S = DefaultSpawnedPerkUILayout();
+	return S;
+}
+
+final function string BuildMidGameMenuLayoutString()
+{
+	local int i;
+	local string S;
+
+	for (i=0; i<MidGameMenuLayout.Length; ++i)
+		S $= MidGameMenuLayout[i];
+	if (S=="")
+		S = DefaultMidGameMenuLayout();
+	return S;
+}
+
+final function SendSpawnedPerkUILayout(ExtPlayerController PC)
+{
+	local int i;
+
+	PC.ClientClearSpawnedPerkUILayout();
+	if (SpawnedPerkUILayout.Length==0)
+		return;
+	for (i=0; i<SpawnedPerkUILayout.Length; ++i)
+		PC.ClientAddSpawnedPerkUILayoutChunk(SpawnedPerkUILayout[i]);
+}
+
+final function SendMidGameMenuLayout(ExtPlayerController PC)
+{
+	local int i;
+
+	PC.ClientClearMidGameMenuLayout();
+	if (MidGameMenuLayout.Length==0)
+	{
+		PC.ClientAddMidGameMenuLayoutChunk(DefaultMidGameMenuLayout());
+		return;
+	}
+	for (i=0; i<MidGameMenuLayout.Length; ++i)
+		PC.ClientAddMidGameMenuLayoutChunk(MidGameMenuLayout[i]);
+}
+
+final function SendZvampextTraderItems(ExtPlayerController PC)
+{
+	local int i;
+	local Zvamp_CustomItems CustomItems;
+	local int StorePrice;
+	local string ItemSpec;
+
+	if (PC == None)
+	{
+		return;
+	}
+
+	CustomItems = new(None) class'Zvamp_CustomItems';
+	PC.ClientClearZvampextTraderItems();
+	for (i = 0; i < CustomItems.Item.Length; ++i)
+	{
+		ItemSpec = CustomItems.Item[i];
+		StorePrice = GetZvampextStorePrice(CustomItems, CustomItems.Item[i]);
+		if (StorePrice >= 0)
+		{
+			ItemSpec $= "|"$StorePrice;
+		}
+		PC.ClientAddZvampextTraderItemPath(ItemSpec);
+	}
+	PC.ClientApplyZvampextTraderItems();
+}
+
+final function ApplyZvampCompatibilityDefaults()
+{
+	class'Zvamp_Knife'.static.InitDefaults();
+	class'Zvamp_Syringe'.static.InitDefaults();
+	class'Zvamp_Camera'.static.InitDefaults();
+
+	if (bZvampCompatDefaultsApplied)
+		return;
+
+	if (class'Zvamp_Knife'.default.bEnabled)
+	{
+		ConsoleCommand("set KFWeap_Knife_Berserker MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Commando MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Demolitionist MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_FieldMedic MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Firebug MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Gunslinger MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Sharpshooter MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Support MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Survivalist MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_SWAT MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Edged_Knife ParryDamageMitigationPercent "$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+		ConsoleCommand("set KFWeap_Edged_Knife BlockDamageMitigation "$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+		`log("[Zvamp] knife compatibility enabled: move="$class'Zvamp_Knife'.default.MovespeedMultiplier@"parryBlock="$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+	}
+
+	if (class'Zvamp_Syringe'.default.bEnabled)
+	{
+		ConsoleCommand("set KFWeap_Healer_Syringe HealAmount "$class'Zvamp_Syringe'.default.OthersHealAmount);
+		ConsoleCommand("set KFWeap_Healer_Syringe HealRechargeTime "$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+		ConsoleCommand("set KFWeap_HealerBase HealAmount "$class'Zvamp_Syringe'.default.OthersHealAmount);
+		ConsoleCommand("set KFWeap_HealerBase HealRechargeTime "$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+		`log("[Zvamp] syringe compatibility enabled: selfHeal="$class'Zvamp_Syringe'.default.StandAloneHealAmount@"otherHeal="$class'Zvamp_Syringe'.default.OthersHealAmount@"selfRecharge="$class'Zvamp_Syringe'.default.HealSelfRechargeSeconds@"otherRecharge="$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+	}
+
+	if (class'Zvamp_Camera'.default.bEnabled)
+		`log("[Zvamp] camera compatibility enabled.");
+
+	bZvampCompatDefaultsApplied = true;
+}
 
 function PostBeginPlay()
 {
@@ -97,12 +306,30 @@ function PostBeginPlay()
 	local bool bLock;
 
 	Super.PostBeginPlay();
-	if (WorldInfo.Game.BaseMutator==None)
-		WorldInfo.Game.BaseMutator = Self;
-	else WorldInfo.Game.BaseMutator.AddMutator(Self);
+	if (!bSMLRuntimeActor)
+	{
+		if (WorldInfo.Game.BaseMutator==None)
+			WorldInfo.Game.BaseMutator = Self;
+		else WorldInfo.Game.BaseMutator.AddMutator(Self);
+	}
+	else
+	{
+		`log("[SMLCompat] ServerExtMut runtime actor mode; not adding to BaseMutator chain.");
+	}
 
 	if (bDeleteMe) // This was a duplicate instance of the mutator.
 		return;
+
+	if (!bZvampextUIOnly)
+	{
+		ApplyZvampCompatibilityDefaults();
+	}
+	else
+	{
+		`log("[Zvamp] UI-only mode enabled; skipping compatibility defaults, pawn replacement, and custom trader item injection.");
+	}
+	if (bSMLRuntimeActor)
+		SetTimer(1.f,true,'MaintainSMLTraderFeatures');
 
 	SpawnPointer = class'ExtSpawnPointHelper'.Static.FindHelper(WorldInfo); // Start init world pathlist.
 
@@ -115,13 +342,15 @@ function PostBeginPlay()
 		class'OnlineSubsystem'.Static.StringToUniqueNetId(DevList[i],Id);
 		DevNetID[i] = Id;
 	}
-
 	ServerStatLoader = new (None) class'ExtPlayerStat';
 	WorldInfo.Game.HUDType = class'KFExtendedHUD';
 	WorldInfo.Game.PlayerControllerClass = class'ExtPlayerController';
 	WorldInfo.Game.PlayerReplicationInfoClass = class'ExtPlayerReplicationInfo';
-	WorldInfo.Game.DefaultPawnClass = class'ExtHumanPawn';
-	KFGameInfo(WorldInfo.Game).CustomizationPawnClass = class'ExtPawn_Customization';
+	if (!bZvampextUIOnly)
+	{
+		WorldInfo.Game.DefaultPawnClass = class'ExtHumanPawn';
+		KFGameInfo(WorldInfo.Game).CustomizationPawnClass = class'ExtPawn_Customization';
+	}
 	KFGameInfo(WorldInfo.Game).KFGFxManagerClass = class'ExtMoviePlayer_Manager';
 
 	KFGIA = new(KFGameInfo(WorldInfo.Game)) class'KFGI_Access';
@@ -186,9 +415,35 @@ function PostBeginPlay()
 		{
 			bThrowAllWeaponsOnDeath = False;
 		}
+		if (SettingsInit < 15)
+		{
+			AdminGrenadeDamageValue = 1.f;
+			AdminGrenadeRadiusValue = 1.f;
+			AdminAmmoPickupValue = 1.f;
+			AdminItemPickupValue = 1.f;
+			AdminArmorPickupValue = 1.f;
+		}
+		if (SettingsInit < 16)
+		{
+			DoshThrowAmount = 50;
+		}
+		if (SettingsInit < 17)
+		{
+			bPlayerProgressWaveVoteEnabled = true;
+			PlayerProgressWaveVoteMax = 5;
+			PlayerProgressWaveVotePct = 0.51;
+			PlayerProgressWaveVoteSeconds = 20;
+			bNextMapChoiceEnabled = false;
+			NextMapChoiceWave = 0;
+			NextMapChoicePct = 0.51;
+			NextMapChoiceSeconds = 20;
+		}
 		SettingsInit = SettingsTagVer;
 		SaveConfig();
 	}
+	if (EnsureCoreRPGPerkClasses())
+		SaveConfig();
+
 	for (i=0; i<PerkClasses.Length; ++i)
 	{
 		PK = class<Ext_PerkBase>(DynamicLoadObject(PerkClasses[i],class'Class'));
@@ -259,6 +514,11 @@ function PostBeginPlay()
 		MV.BaseMutator = Class;
 	}
 	SetTimer(1,true,'CheckWave');
+	SetTimer(1,true,'AutoMessageTick');
+	if (!bZvampextUIOnly)
+	{
+		SetTimer(1,false,'ApplyZvampextTraderItems');
+	}
 	if (!bNoWebAdmin && WorldInfo.NetMode!=NM_StandAlone)
 		SetTimer(0.1,false,'SetupWebAdmin');
 
@@ -268,6 +528,329 @@ function PostBeginPlay()
 	UpdateCustomZedXPArray();
 	// Causes bugs
 	// SetTimer(0.1,'CheckPickupFactories')
+}
+
+function ApplyZvampextTraderItems()
+{
+	RefreshZvampextTraderItems();
+}
+
+function int RefreshZvampextTraderItems(optional bool bForceRefresh, optional PlayerController Sender)
+{
+	local KFGameReplicationInfo KFGRI;
+	local KFGFxObject_TraderItems TraderItems;
+	local int i;
+	local int Added;
+	local STraderItem NewItem;
+	local Zvamp_CustomItems CustomItems;
+	local int StorePrice;
+	local bool bChanged;
+
+	if (bZvampextTraderItemsApplied && !bForceRefresh)
+	{
+		return 0;
+	}
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI == None || KFGRI.TraderItems == None)
+	{
+		SetTimer(1,false,'ApplyZvampextTraderItems');
+		return 0;
+	}
+
+	CustomItems = new(None) class'Zvamp_CustomItems';
+	TraderItems = KFGRI.TraderItems;
+
+	for (i = 0; i < CustomItems.Item.Length; ++i)
+	{
+		if (BuildZvampextTraderItem(CustomItems.Item[i], NewItem))
+		{
+			if (TraderItems.SaleItems.Find('WeaponDef', NewItem.WeaponDef) != INDEX_NONE
+				|| TraderItems.SaleItems.Find('ClassName', NewItem.ClassName) != INDEX_NONE)
+			{
+				StorePrice = GetZvampextStorePrice(CustomItems, CustomItems.Item[i]);
+				if (StorePrice >= 0)
+				{
+					ApplyZvampextStorePriceToTraderItems(TraderItems, NewItem, StorePrice);
+					bChanged = true;
+				}
+				continue;
+			}
+
+			StorePrice = GetZvampextStorePrice(CustomItems, CustomItems.Item[i]);
+			if (StorePrice >= 0)
+			{
+				ApplyZvampextStorePrice(NewItem.WeaponDef, StorePrice);
+				bChanged = true;
+			}
+
+			NewItem.ItemID = GetNextZvampextTraderItemID(TraderItems);
+			TraderItems.SaleItems.AddItem(NewItem);
+			++Added;
+			LogZvampextTraderItem("added custom trader item: "$CustomItems.Item[i], NewItem);
+		}
+		else
+		{
+			`log("[Zvamp] skipped custom trader item, could not load weapon def/class: "$CustomItems.Item[i]);
+		}
+	}
+
+	if (Added > 0 || bChanged)
+	{
+		TraderItems.SetItemsInfo(TraderItems.SaleItems);
+		KFGRI.TraderItems = TraderItems;
+		KFGRI.bForceNetUpdate = true;
+	}
+
+	bZvampextTraderItemsApplied = true;
+	if (Sender != None)
+	{
+		Sender.ClientMessage("[Zvamp] custom trader items refreshed; added "$Added$" new item(s).", 'Priority');
+	}
+
+	return Added;
+}
+
+final function ApplyZvampextStorePrice(class<KFWeaponDefinition> WeaponDef, int StorePrice)
+{
+	local string DefPath;
+	local int OldPrice;
+
+	if (WeaponDef == None || StorePrice < 0)
+	{
+		return;
+	}
+
+	DefPath = NormalizeZvampextClassPath(PathName(WeaponDef));
+	OldPrice = WeaponDef.default.BuyPrice;
+	ConsoleCommand("set" @ DefPath @ "BuyPrice" @ StorePrice);
+	`log("[Zvamp] custom item price override: "$DefPath@"old="$OldPrice@"new="$StorePrice@"effective="$WeaponDef.default.BuyPrice);
+}
+
+final function ApplyZvampextStorePriceToTraderItems(out KFGFxObject_TraderItems TraderItems, const out STraderItem MatchItem, int StorePrice)
+{
+	local int i;
+
+	ApplyZvampextStorePrice(MatchItem.WeaponDef, StorePrice);
+	for (i = 0; i < TraderItems.SaleItems.Length; ++i)
+	{
+		if ((MatchItem.WeaponDef != None && TraderItems.SaleItems[i].WeaponDef == MatchItem.WeaponDef)
+			|| (MatchItem.ClassName != '' && TraderItems.SaleItems[i].ClassName == MatchItem.ClassName))
+		{
+			ApplyZvampextStorePrice(TraderItems.SaleItems[i].WeaponDef, StorePrice);
+		}
+	}
+}
+
+final function string NormalizeZvampextClassPath(string ClassPath)
+{
+	if (Left(ClassPath, 6) ~= "Class ")
+	{
+		ClassPath = Mid(ClassPath, 6);
+	}
+	if (Left(ClassPath, 6) ~= "Class'")
+	{
+		ClassPath = Mid(ClassPath, 6);
+		if (Right(ClassPath, 1) == "'")
+		{
+			ClassPath = Left(ClassPath, Len(ClassPath) - 1);
+		}
+	}
+	return ClassPath;
+}
+
+final function int GetZvampextStorePrice(Zvamp_CustomItems CustomItems, string ItemPath)
+{
+	local int i;
+	local string PricePath;
+	local int PriceValue;
+
+	if (CustomItems == None)
+	{
+		return -1;
+	}
+
+	for (i = 0; i < CustomItems.StorePrice.Length; ++i)
+	{
+		if (ParseZvampextStorePrice(CustomItems.StorePrice[i], PricePath, PriceValue)
+			&& PricePath ~= ItemPath)
+		{
+			return PriceValue;
+		}
+	}
+
+	return -1;
+}
+
+final function bool ParseZvampextStorePrice(string Row, out string ItemPath, out int PriceValue)
+{
+	local int SplitAt;
+	local string PriceText;
+
+	Row = TrimAdminID(Row);
+	SplitAt = InStr(Row, "=");
+	if (SplitAt == INDEX_NONE)
+	{
+		SplitAt = InStr(Row, ":");
+	}
+	if (SplitAt == INDEX_NONE)
+	{
+		return false;
+	}
+
+	ItemPath = TrimAdminID(Left(Row, SplitAt));
+	PriceText = TrimAdminID(Mid(Row, SplitAt + 1));
+	PriceValue = int(PriceText);
+	return (ItemPath != "" && PriceValue >= 0);
+}
+
+final function LogZvampextTraderItem(string Prefix, const out STraderItem Item)
+{
+	local int i;
+	local string PerkNames;
+
+	for (i = 0; i < Item.AssociatedPerkClasses.Length; ++i)
+	{
+		if (PerkNames != "")
+		{
+			PerkNames $= ",";
+		}
+		PerkNames $= string(Item.AssociatedPerkClasses[i]);
+	}
+
+	`log("[Zvamp] "$Prefix
+		@"class="$Item.ClassName
+		@"def="$Item.WeaponDef
+		@"itemId="$Item.ItemID
+		@"price="$(Item.WeaponDef != None ? Item.WeaponDef.default.BuyPrice : -1)
+		@"blocks="$Item.BlocksRequired
+		@"group="$Item.InventoryGroup
+		@"priority="$Item.GroupPriority
+		@"filter="$Item.TraderFilter
+		@"perks="$PerkNames);
+}
+
+final function int GetNextZvampextTraderItemID(KFGFxObject_TraderItems TraderItems)
+{
+	local int ItemID;
+
+	ItemID = TraderItems.SaleItems.Length;
+	while (TraderItems.SaleItems.Find('ItemID', ItemID) != INDEX_NONE)
+	{
+		++ItemID;
+	}
+
+	return ItemID;
+}
+
+final function bool BuildZvampextTraderItem(string WeaponDefPath, out STraderItem NewItem)
+{
+	local class<KFWeaponDefinition> WeaponDef;
+	local class<KFWeapon> WeaponClass;
+	local class<KFWeap_DualBase> DualClass;
+	local array<STraderItemWeaponStats> WeaponStats;
+	local string CandidateDefPath;
+	local int DotPos;
+	local string PackageName;
+	local string ClassName;
+
+	WeaponDefPath = TrimAdminID(WeaponDefPath);
+	if (WeaponDefPath == "")
+	{
+		return false;
+	}
+
+	WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(WeaponDefPath, class'Class', true));
+	if (WeaponDef != None && WeaponDef.default.WeaponClassPath != "")
+	{
+		WeaponClass = class<KFWeapon>(DynamicLoadObject(WeaponDef.default.WeaponClassPath, class'Class', true));
+	}
+	else
+	{
+		WeaponClass = class<KFWeapon>(DynamicLoadObject(WeaponDefPath, class'Class', true));
+		if (WeaponClass == None)
+			return false;
+
+		DotPos = InStr(WeaponDefPath, ".");
+		if (DotPos != INDEX_NONE)
+		{
+			PackageName = Left(WeaponDefPath, DotPos);
+			ClassName = Mid(WeaponDefPath, DotPos + 1);
+			CandidateDefPath = PackageName $ "." $ ClassName $ "Def";
+			WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(CandidateDefPath, class'Class', true));
+		}
+	}
+
+	if (WeaponClass == None)
+	{
+		return false;
+	}
+	if (WeaponDef == None)
+	{
+		return false;
+	}
+
+	NewItem.WeaponDef = WeaponDef;
+	NewItem.ClassName = WeaponClass.Name;
+
+	DualClass = class<KFWeap_DualBase>(WeaponClass);
+	if (DualClass != None && DualClass.default.SingleClass != None)
+	{
+		NewItem.SingleClassName = DualClass.default.SingleClass.Name;
+	}
+	else
+	{
+		NewItem.SingleClassName = WeaponClass.Name;
+	}
+
+	NewItem.DualClassName = WeaponClass.default.DualClass != None ? WeaponClass.default.DualClass.Name : '';
+	NewItem.AssociatedPerkClasses = WeaponClass.static.GetAssociatedPerkClasses();
+	NormalizeZvampextAssociatedPerks(NewItem.AssociatedPerkClasses);
+	if (NewItem.AssociatedPerkClasses.Find(class'KFPerk_Survivalist') == INDEX_NONE)
+	{
+		NewItem.AssociatedPerkClasses.AddItem(class'KFPerk_Survivalist');
+	}
+	NewItem.MagazineCapacity = WeaponClass.default.MagazineCapacity[0];
+	NewItem.InitialSpareMags = WeaponClass.default.InitialSpareMags[0];
+	NewItem.MaxSpareAmmo = WeaponClass.default.SpareAmmoCapacity[0];
+	NewItem.InitialSecondaryAmmo = WeaponClass.default.InitialSpareMags[1];
+	NewItem.MaxSecondaryAmmo = WeaponClass.default.MagazineCapacity[1] * WeaponClass.default.SpareAmmoCapacity[1];
+	NewItem.BlocksRequired = WeaponClass.default.InventorySize;
+	NewItem.SecondaryAmmoImagePath = WeaponClass.default.SecondaryAmmoTexture != None ? "img://"$PathName(WeaponClass.default.SecondaryAmmoTexture) : "";
+	NewItem.TraderFilter = WeaponClass.static.GetTraderFilter();
+	NewItem.AltTraderFilter = FT_None;
+	NewItem.InventoryGroup = WeaponClass.default.InventoryGroup;
+	NewItem.GroupPriority = WeaponClass.default.GroupPriority;
+	NewItem.bCanBuyAmmo = true;
+
+	WeaponClass.static.SetTraderWeaponStats(WeaponStats);
+	NewItem.WeaponStats = WeaponStats;
+
+	return true;
+}
+
+final function NormalizeZvampextAssociatedPerks(out array<class<KFPerk> > AssociatedPerks)
+{
+	local int i;
+	local int j;
+
+	for (i = AssociatedPerks.Length - 1; i >= 0; --i)
+	{
+		if (AssociatedPerks[i] == None)
+		{
+			AssociatedPerks.Remove(i, 1);
+			continue;
+		}
+
+		for (j = i - 1; j >= 0; --j)
+		{
+			if (AssociatedPerks[j] == AssociatedPerks[i])
+			{
+				AssociatedPerks.Remove(i, 1);
+				break;
+			}
+		}
+	}
 }
 
 function UpdateCustomZedXPArray()
@@ -308,6 +891,170 @@ final function bool IsDev(const out UniqueNetId UID)
 	return false;
 }
 
+static final function string TrimAdminID(string S)
+{
+	local int i;
+
+	i = InStr(S,";");
+	if (i!=-1)
+		S = Left(S,i);
+	while (Len(S)>0 && (Left(S,1)==" " || Left(S,1)==Chr(9)))
+		S = Mid(S,1);
+	while (Len(S)>0 && (Right(S,1)==" " || Right(S,1)==Chr(9)))
+		S = Left(S,Len(S)-1);
+	return S;
+}
+
+static final function int HexDigit(string S)
+{
+	S = Caps(S);
+	switch (S)
+	{
+	case "0": return 0;
+	case "1": return 1;
+	case "2": return 2;
+	case "3": return 3;
+	case "4": return 4;
+	case "5": return 5;
+	case "6": return 6;
+	case "7": return 7;
+	case "8": return 8;
+	case "9": return 9;
+	case "A": return 10;
+	case "B": return 11;
+	case "C": return 12;
+	case "D": return 13;
+	case "E": return 14;
+	case "F": return 15;
+	}
+	return 0;
+}
+
+static final function string DecimalDouble(string S)
+{
+	local int i,D,C,V;
+	local string R;
+
+	C = 0;
+	for (i=Len(S)-1; i>=0; --i)
+	{
+		D = int(Mid(S,i,1));
+		V = D*2+C;
+		R = string(V%10)$R;
+		C = V/10;
+	}
+	if (C>0)
+		R = string(C)$R;
+	return R;
+}
+
+static final function string DecimalAddSmall(string S, int Add)
+{
+	local int i,D,C,V;
+	local string R;
+
+	C = Add;
+	for (i=Len(S)-1; i>=0; --i)
+	{
+		D = int(Mid(S,i,1));
+		V = D+C;
+		R = string(V%10)$R;
+		C = V/10;
+	}
+	while (C>0)
+	{
+		R = string(C%10)$R;
+		C = C/10;
+	}
+	while (Len(R)>1 && Left(R,1)=="0")
+		R = Mid(R,1);
+	return R;
+}
+
+static final function string HexToDecimalString(string Hex)
+{
+	local int i,j,N;
+	local string R;
+
+	R = "0";
+	if (Left(Hex,2)~="0x")
+		j = 2;
+	for (i=j; i<Len(Hex); ++i)
+	{
+		for (N=0; N<4; ++N)
+			R = DecimalDouble(R);
+		R = DecimalAddSmall(R,HexDigit(Mid(Hex,i,1)));
+	}
+	return R;
+}
+
+static final function int HexToAccountInt(string Hex)
+{
+	local int i,j,R;
+
+	j = Max(Len(Hex)-8,0);
+	for (i=j; i<Len(Hex); ++i)
+		R = R*16+HexDigit(Mid(Hex,i,1));
+	return R;
+}
+
+static final function string HexToSteam2String(string Hex)
+{
+	local int Account,Y,Z;
+
+	Account = HexToAccountInt(Hex);
+	Y = Account%2;
+	Z = Account/2;
+	return "STEAM_0:"$Y$":"$Z;
+}
+
+final function bool AdminIDMatches(string ConfigID, string HexID, string Steam64ID, string Steam2ID)
+{
+	ConfigID = TrimAdminID(ConfigID);
+	if (ConfigID=="" || ConfigID~="0x0000000000000000")
+		return false;
+	if (ConfigID ~= HexID || ConfigID ~= Steam64ID || ConfigID ~= Steam2ID)
+		return true;
+	return false;
+}
+
+final function bool IsRevampAdmin(const out UniqueNetId UID)
+{
+	local int i;
+	local string HexID,Steam64ID,Steam2ID;
+
+	HexID = class'OnlineSubsystem'.Static.UniqueNetIdToString(UID);
+	Steam64ID = HexToDecimalString(HexID);
+	Steam2ID = HexToSteam2String(HexID);
+	for (i=(RevampAdminSteamIDs.Length-1); i>=0; --i)
+		if (AdminIDMatches(RevampAdminSteamIDs[i],HexID,Steam64ID,Steam2ID))
+			return true;
+	for (i=(ZvampextAdminIDs.Length-1); i>=0; --i)
+		if (AdminIDMatches(ZvampextAdminIDs[i],HexID,Steam64ID,Steam2ID))
+			return true;
+	return false;
+}
+
+final function GrantRevampAdminIfConfigured(ExtPlayerReplicationInfo PRI)
+{
+	local ExtPlayerController PC;
+
+	if (PRI==None || !IsRevampAdmin(PRI.UniqueId))
+		return;
+
+	PC = ExtPlayerController(PRI.Owner);
+	PRI.bAdmin = true;
+	PRI.AdminType = AT_Admin;
+	PRI.bForceNetUpdate = true;
+	`Log("Zvampext: granted admin UI access to "$PRI.PlayerName@"("$class'OnlineSubsystem'.Static.UniqueNetIdToString(PRI.UniqueId)$")");
+	if (bZvampextAutoEnableCheats && PC!=None)
+	{
+		PC.AddCheats(true);
+		PC.ClientMessage("Zvampext admin cheats enabled.",'Priority');
+		`Log("Zvampext: enabled admin cheats for "$PRI.PlayerName);
+	}
+}
+
 function CheckWave()
 {
 	if (KF==None)
@@ -345,6 +1092,9 @@ function NotifyWaveChange()
 		NumWaveSwitches = 0;
 		SaveAllPerks();
 	}
+
+	if (bNextMapChoiceEnabled && !bNextMapChoiceOffered && NextMapChoiceWave>0 && KF.WaveNum>=NextMapChoiceWave)
+		StartNextMapChoiceVote();
 
 	if (!KF.bTraderIsOpen)
 	{
@@ -406,6 +1156,11 @@ function AddMutator(Mutator M)
 			M.Destroy();
 		else Super.AddMutator(M);
 	}
+}
+
+static function string GetLocalString(optional int Switch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2)
+{
+	return string(class'SML_ServerExtMutActor');
 }
 
 function bool IsFromMod(Object O)
@@ -590,6 +1345,11 @@ final function bool CheckPreventDeath(KFPawn_Human Victim, Controller Killer, cl
 	if (Victim.IsA('KFPawn_Customization'))
 		return false;
 	E = ExtPlayerController(Victim.Controller);
+	if (E!=None && E.bRevampGodMode)
+	{
+		Victim.Health = Max(Victim.Health, 1);
+		return true;
+	}
 	return (E!=None && E.ActivePerkManager!=None && E.ActivePerkManager.CurrentPerk!=None && E.ActivePerkManager.CurrentPerk.PreventDeath(Victim,Killer,damageType));
 }
 
@@ -635,8 +1395,21 @@ final function BroadcastFFDeath(Controller Killer, Pawn Killed, class<DamageType
 
 function NetDamage(int OriginalDamage, out int Damage, Pawn Injured, Controller InstigatedBy, vector HitLocation, out vector Momentum, class<DamageType> DamageType, Actor DamageCauser)
 {
+	local ExtPlayerController InjuredPC;
+
 	if (NextMutator != None)
 		NextMutator.NetDamage(OriginalDamage, Damage, Injured, InstigatedBy, HitLocation, Momentum, DamageType, DamageCauser);
+
+	if (KFPawn_Human(Injured)!=None)
+	{
+		InjuredPC = ExtPlayerController(Injured.Controller);
+		if (InjuredPC!=None && InjuredPC.bRevampGodMode)
+		{
+			Damage = 0;
+			Momentum = vect(0,0,0);
+			return;
+		}
+	}
 
 	if (LastDamageDealer!=None) // Make sure no other damagers interfear with the old thing going on.
 	{
@@ -651,6 +1424,9 @@ function NetDamage(int OriginalDamage, out int Damage, Pawn Injured, Controller 
 	}
 	if (Damage>0 && InstigatedBy!=None)
 	{
+		if (bAdminGrenadeDamage && IsAdminGrenadeDamage(DamageType,DamageCauser))
+			Damage = Max(Round(float(Damage) * AdminGrenadeDamageValue),0);
+
 		if (KFPawn_Monster(Injured)!=None)
 		{
 			if (Injured.GetTeamNum()!=0)
@@ -769,19 +1545,30 @@ function NotifyLogout(Controller Exiting)
 
 function NotifyLogin(Controller NewPlayer)
 {
+	local ExtPlayerReplicationInfo EPRI;
+
 	if (ExtPlayerController(NewPlayer)!=None)
 	{
-		if (ExtPlayerReplicationInfo(NewPlayer.PlayerReplicationInfo)!=None)
-			InitCustomChars(ExtPlayerReplicationInfo(NewPlayer.PlayerReplicationInfo));
-		if (bAddCountryTags && NetConnection(PlayerController(NewPlayer).Player)!=None)
-			ExtPlayerReplicationInfo(NewPlayer.PlayerReplicationInfo).SetPlayerNameTag(class'CtryDatabase'.Static.GetClientCountryStr(PlayerController(NewPlayer).GetPlayerNetworkAddress()));
-		ExtPlayerReplicationInfo(NewPlayer.PlayerReplicationInfo).bIsDev = IsDev(NewPlayer.PlayerReplicationInfo.UniqueId);
+		EPRI = ExtPlayerReplicationInfo(NewPlayer.PlayerReplicationInfo);
+		if (EPRI!=None)
+		{
+			InitCustomChars(EPRI);
+			GrantRevampAdminIfConfigured(EPRI);
+		}
+		if (EPRI!=None && bAddCountryTags && NetConnection(PlayerController(NewPlayer).Player)!=None)
+			EPRI.SetPlayerNameTag(class'CtryDatabase'.Static.GetClientCountryStr(PlayerController(NewPlayer).GetPlayerNetworkAddress()));
+		if (EPRI!=None)
+			EPRI.bIsDev = IsDev(NewPlayer.PlayerReplicationInfo.UniqueId);
 		if (BonusGameCue!=None || BonusGameFXObj!=None)
 			ExtPlayerController(NewPlayer).ClientSetBonus(BonusGameCue,BonusGameFXObj);
 		if (bRespawnCheck)
 			CheckRespawn(NewPlayer);
 		if (!bGameHasEnded)
 			InitializePerks(ExtPlayerController(NewPlayer));
+		if (!bZvampextUIOnly)
+		{
+			SendZvampextTraderItems(ExtPlayerController(NewPlayer));
+		}
 		SendMOTD(ExtPlayerController(NewPlayer));
 	}
 	if (NextMutator != None)
@@ -799,11 +1586,37 @@ final function InitializePerks(ExtPlayerController Other)
 	Other.OnBoughtTrait = PlayerBoughtTrait;
 	Other.OnPerkReset = ResetPlayerPerk;
 	Other.OnAdminHandle = AdminCommand;
+	Other.OnAdminRevampAction = AdminRevampAction;
+	Other.OnAdminSetTraderGuard = AdminSetTraderGuard;
+	Other.OnAdminSetPickupOverrides = AdminSetPickupOverrides;
+		Other.OnAdminFastForwardTrader = AdminFastForwardTrader;
+		Other.OnAdminOpenTrader = AdminOpenTrader;
+		Other.OnPublicOpenTrader = PublicOpenTrader;
+		Other.OnRefreshNewItems = RefreshNewItemsFor;
+		Other.OnAdminGiveDosh = AdminGiveDosh;
+		Other.OnAdminSetDoshThrowAmount = AdminSetDoshThrowAmount;
+		Other.OnAdminProgressWave = AdminProgressWave;
+		Other.OnAdminBuildID = AdminBuildID;
+		Other.OnAdminSetAutoMessage = AdminSetAutoMessage;
+		Other.OnPlayerProgressWaveVoteCall = PlayerProgressWaveVoteCall;
+		Other.OnPlayerProgressWaveVoteAnswer = PlayerProgressWaveVoteAnswer;
+		Other.OnPlayerNextMapVoteAnswer = PlayerNextMapVoteAnswer;
 	Other.OnSetMOTD = AdminSetMOTD;
 	Other.OnRequestUnload = PlayerUnloadInfo;
 	Other.OnSpectateChange = PlayerChangeSpec;
 	Other.OnClientGetStat = class'ExtStatList'.Static.GetStat;
 	PM = Other.ActivePerkManager;
+	if (PM==None)
+	{
+		PM = Other.Spawn(class'ExtPerkManager',Other);
+		Other.ActivePerkManager = PM;
+		PM.PlayerOwner = Other;
+		PM.PRIOwner = ExtPlayerReplicationInfo(Other.PlayerReplicationInfo);
+		if (PM.PRIOwner!=None)
+			PM.PRIOwner.PerkManager = PM;
+		PM.bForceNetUpdate = true;
+		Other.bForceNetUpdate = true;
+	}
 	PM.InitPerks();
 	for (i=0; i<LoadedPerks.Length; ++i)
 	{
@@ -820,6 +1633,8 @@ final function InitializePerks(ExtPlayerController Other)
 	}
 	PM.ServerInitPerks();
 	PM.InitiateClientRep();
+	if (PM.ZvampextNeedsReplicationKick())
+		SetTimer(1.f,true,'ZvampextPerkReplicationWatchdog');
 }
 
 final function SendMOTD(ExtPlayerController PC)
@@ -837,6 +1652,15 @@ final function SendMOTD(ExtPlayerController PC)
 
 	for (i=0; i<AdminCommands.Length; ++i)
 		PC.AddAdminCmd(AdminCommands[i]);
+	PC.ClientSetRevampTraderGuard(bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader);
+	PC.ClientSetVampUIEndMatchEnabled(bVampUIEndMatchEnabled);
+	PC.ClientSetAdminPickupOverrides(bAdminGrenadeDamage,AdminGrenadeDamageValue,bAdminGrenadeRadius,AdminGrenadeRadiusValue,bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+	PC.ClientRefreshZvampextSettings();
+	ApplyPickupOverridesToController(PC);
+	PC.ApplyPlayerDoshThrowAmount();
+	PC.ClientSetZvampCamera(class'Zvamp_Camera'.default.bEnabled,class'Zvamp_Camera'.default.bDisableCamShakes,class'Zvamp_Camera'.default.bDisableSprintFOVChange,class'Zvamp_Camera'.default.bDisableEarsRinging,class'Zvamp_Camera'.default.bDisableCameraAnims,class'Zvamp_Camera'.default.ZedTimeEffectReduction);
+	SendMidGameMenuLayout(PC);
+	SendSpawnedPerkUILayout(PC);
 }
 
 final function SavePlayerPerk(ExtPlayerController PC)
@@ -926,10 +1750,112 @@ final function InitPlayer(ExtHumanPawn Other)
 
 function ModifyPlayer(Pawn Other)
 {
+	local ExtPlayerController PC;
+
 	if (ExtHumanPawn(Other)!=None)
 		InitPlayer(ExtHumanPawn(Other));
+	ApplyPickupOverridesTo(Other);
 	if (NextMutator != None)
 		NextMutator.ModifyPlayer(Other);
+
+	PC = ExtPlayerController(Other.Controller);
+	if (PC!=None)
+		PC.ApplyPlayerDoshThrowAmount();
+	if (PC!=None && PC.ActivePerkManager!=None && PC.ActivePerkManager.ZvampextNeedsReplicationKick())
+	{
+		PC.ActivePerkManager.ZvampextKickClientReplication(true);
+		SetTimer(1.f,true,'ZvampextPerkReplicationWatchdog');
+	}
+}
+
+function ZvampextPerkReplicationWatchdog()
+{
+	local ExtPlayerController PC;
+	local bool bNeedRetry;
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',PC)
+	{
+		if (PC!=None && PC.ActivePerkManager!=None && PC.ActivePerkManager.ZvampextNeedsReplicationKick())
+		{
+			PC.ActivePerkManager.ZvampextKickClientReplication();
+			bNeedRetry = true;
+		}
+	}
+
+	if (!bNeedRetry)
+		ClearTimer('ZvampextPerkReplicationWatchdog');
+}
+
+function MaintainSMLTraderFeatures()
+{
+	local KFGameReplicationInfo KFGRI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI != None && KFGRI.bTraderIsOpen)
+	{
+		if (bZvampextAutoPauseTrader)
+		{
+			KFGRI.bStopCountDown = true;
+			KFGRI.bForceNetUpdate = true;
+			if (!bSMLTraderAutoPaused)
+			{
+				bSMLTraderAutoPaused = true;
+				`log("[SMLCompat] trader auto-hold enabled.");
+			}
+		}
+		ApplySMLTraderSpeedBoost();
+	}
+	else
+	{
+		bSMLTraderAutoPaused = false;
+		ClearSMLTraderSpeedBoost();
+	}
+}
+
+function ReleaseSMLTraderPause()
+{
+	local KFGameReplicationInfo KFGRI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI != None)
+	{
+		KFGRI.bStopCountDown = false;
+		KFGRI.bForceNetUpdate = true;
+	}
+	bSMLTraderAutoPaused = false;
+}
+
+function ApplySMLTraderSpeedBoost()
+{
+	local ExtHumanPawn P;
+	local float SpeedBoostMod;
+
+	SpeedBoostMod = class'Zvamp_Knife'.static.GetQuickTraderKnife();
+	if (bZvampextTraderSpeedBoost)
+		SpeedBoostMod = FMax(SpeedBoostMod, ZvampextTraderSpeedBoostMultiplier);
+	SpeedBoostMod = FMax(SpeedBoostMod, 1.f);
+	if (SpeedBoostMod <= 1.f)
+	{
+		ClearSMLTraderSpeedBoost();
+		return;
+	}
+
+	foreach WorldInfo.AllPawns(class'ExtHumanPawn', P)
+	{
+		if (P != None && !P.bDeleteMe && P.IsAliveAndWell())
+			P.SetZvampextTraderSpeedBoost(SpeedBoostMod);
+	}
+}
+
+function ClearSMLTraderSpeedBoost()
+{
+	local ExtHumanPawn P;
+
+	foreach WorldInfo.AllPawns(class'ExtHumanPawn', P)
+	{
+		if (P != None && P.ZvampextTraderSpeedBoostMod > 1.f)
+			P.SetZvampextTraderSpeedBoost(1.f);
+	}
 }
 
 function Timer()
@@ -1202,6 +2128,7 @@ function PlayerBuyStats(ExtPlayerController PC, class<Ext_PerkBase> Perk, int iS
 	P = PC.ActivePerkManager.FindPerk(Perk);
 	if (P==None || !P.bPerkNetReady || iStat>=P.PerkStats.Length)
 		return;
+	Amount = Max(Amount,1);
 	Amount = Min(Amount,P.PerkStats[iStat].MaxValue-P.PerkStats[iStat].CurrentValue);
 	if (Amount<=0)
 		return;
@@ -1214,14 +2141,22 @@ function PlayerBuyStats(ExtPlayerController PC, class<Ext_PerkBase> Perk, int iS
 		i = Amount*P.PerkStats[iStat].CostPerValue;
 	}
 	P.CurrentSP-=i;
+	if (P.bOwnerNetClient)
+		P.ClientSetCurrentSP(P.CurrentSP);
 	if (!P.IncrementStat(iStat,Amount))
 		PC.ClientMessage("Failed to buy stat.");
+	else SavePlayerPerk(PC);
 }
 
 function PlayerChangePerk(ExtPlayerController PC, class<Ext_PerkBase> NewPerk)
 {
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+
 	if (bGameHasEnded)
 		return;
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
 	if (NewPerk==PC.ActivePerkManager.CurrentPerk.Class)
 	{
 		if (PC.PendingPerkClass!=None)
@@ -1230,7 +2165,8 @@ function PlayerChangePerk(ExtPlayerController PC, class<Ext_PerkBase> NewPerk)
 			PC.PendingPerkClass = None;
 		}
 	}
-	else if (PC.ActivePerkManager.CurrentPerk==None || KFPawn_Customization(PC.Pawn)!=None || (!PC.bSetPerk && KFGameReplicationInfo(WorldInfo.GRI).bTraderIsOpen))
+	else if (PC.ActivePerkManager.CurrentPerk==None || KFPawn_Customization(PC.Pawn)!=None
+		|| (KFGRI!=None && KFGRI.bTraderIsOpen) || (KFGI!=None && KFGI.GetStateName()!='PlayingWave'))
 	{
 		if (PC.ActivePerkManager.ApplyPerkClass(NewPerk))
 		{
@@ -1303,6 +2239,8 @@ function PlayerBoughtTrait(ExtPlayerController PC, class<Ext_PerkBase> PerkClass
 			PC.ActivePerkManager.bStatsDirty = true;
 			P.CurrentSP-=cost;
 			P.bForceNetUpdate = true;
+			if (P.bOwnerNetClient)
+				P.ClientSetCurrentSP(P.CurrentSP);
 			++P.PerkTraits[i].CurrentLevel;
 			P.ClientReceiveTraitLvl(i,P.PerkTraits[i].CurrentLevel);
 			if (P.PerkTraits[i].CurrentLevel==1)
@@ -1318,6 +2256,7 @@ function PlayerBoughtTrait(ExtPlayerController PC, class<Ext_PerkBase> PerkClass
 					Trait.Static.ApplyEffectOn(KFPawn_Human(PC.Pawn),P,P.PerkTraits[i].CurrentLevel,P.PerkTraits[i].Data);
 				}
 			}
+			SavePlayerPerk(PC);
 			break;
 		}
 	}
@@ -1370,6 +2309,8 @@ function PlayerUnloadInfo(ExtPlayerController PC, byte CallID, class<Ext_PerkBas
 	P.CurrentEXP -= LostExp;
 	P.SetInitialLevel();
 	PC.ActivePerkManager.PRIOwner.SetLevelProgress(P.CurrentLevel,P.CurrentPrestige,P.MinimumLevel,P.MaximumLevel);
+	PC.ActivePerkManager.bStatsDirty = true;
+	SavePlayerPerk(PC);
 	if (PC.Pawn!=None)
 		PC.Pawn.Suicide();
 }
@@ -1395,13 +2336,43 @@ function ResetPlayerPerk(ExtPlayerController PC, class<Ext_PerkBase> PerkClass, 
 		++P.CurrentPrestige;
 	}
 	P.FullReset(bPrestige);
+	PC.ActivePerkManager.bStatsDirty = true;
+	SavePlayerPerk(PC);
 }
 
 function bool CheckReplacement(Actor Other)
 {
 	if (bNoBoomstickJumping && KFWeap_Shotgun_DoubleBarrel(Other)!=None)
 		KFWeap_Shotgun_DoubleBarrel(Other).DoubleBarrelKickMomentum = 5.f;
+	if (bAdminGrenadeRadius && KFProj_Grenade(Other)!=None)
+		KFProj_Grenade(Other).DamageRadius *= AdminGrenadeRadiusValue;
 	return true;
+}
+
+final function bool IsAdminGrenadeDamage(class<DamageType> DamageType, Actor DamageCauser)
+{
+	return KFProj_Grenade(DamageCauser)!=None || (DamageType!=None && InStr(string(DamageType.Name),"Grenade")>=0);
+}
+
+final function ApplyPickupOverridesTo(Pawn Other)
+{
+	local ExtInventoryManager IM;
+
+	if (Other==None)
+		return;
+
+	IM = ExtInventoryManager(Other.InvManager);
+	if (IM!=None)
+	{
+		IM.SetAdminPickupOverrides(bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+		IM.SetDoshThrowAmount(DoshThrowAmount);
+	}
+}
+
+final function ApplyPickupOverridesToController(ExtPlayerController PC)
+{
+	if (PC!=None)
+		ApplyPickupOverridesTo(PC.Pawn);
 }
 
 final function InitCustomChars(ExtPlayerReplicationInfo PRI)
@@ -1469,6 +2440,8 @@ function AdminCommand(ExtPlayerController PC, int PlayerID, int Action)
 			E.ActivePerkManager.CurrentPerk.SetInitialLevel();
 			E.ActivePerkManager.CurrentPerk.UpdatePRILevel();
 		}
+		E.ActivePerkManager.bStatsDirty = true;
+		SavePlayerPerk(E);
 		return;
 	}
 
@@ -1539,6 +2512,12 @@ function AdminCommand(ExtPlayerController PC, int PlayerID, int Action)
 		break;
 	default:
 		PC.ClientMessage("Unknown admin action.",'Priority');
+		return;
+	}
+	if (Action>=0 && Action<=8 && E!=None && E.ActivePerkManager!=None)
+	{
+		E.ActivePerkManager.bStatsDirty = true;
+		SavePlayerPerk(E);
 	}
 }
 
@@ -1549,6 +2528,872 @@ function AdminSetMOTD(ExtPlayerController PC, string S)
 	ServerMOTD = S;
 	SaveConfig();
 	PC.ClientMessage("Message of the Day updated.",'Priority');
+}
+
+final function string SanitizeAutoMessageColor(string S)
+{
+	if (Len(S)!=6)
+		return "9B7CFF";
+	return Caps(S);
+}
+
+final function string ExtractAutoMessageColor(out string MessageText, string DefaultColor)
+{
+	local string ColorText;
+
+	if (Len(MessageText)>=8 && Left(MessageText,1)=="<" && Mid(MessageText,7,1)==">")
+	{
+		ColorText = SanitizeAutoMessageColor(Mid(MessageText,1,6));
+		MessageText = TrimAutoMessageEntry(Mid(MessageText,8));
+		return ColorText;
+	}
+	return SanitizeAutoMessageColor(DefaultColor);
+}
+
+final function string TrimAutoMessageEntry(string S)
+{
+	while (Len(S)>0 && (Left(S,1)==" " || Left(S,1)==Chr(9)))
+		S = Mid(S,1);
+	while (Len(S)>0 && (Right(S,1)==" " || Right(S,1)==Chr(9)))
+		S = Left(S,Len(S)-1);
+	return S;
+}
+
+final function BuildAutoMessageList(string MessageText)
+{
+	local int SplitAt;
+	local string Entry;
+
+	AutoMessageTexts.Length = 0;
+	while (MessageText!="")
+	{
+		SplitAt = InStr(MessageText,";;");
+		if (SplitAt>=0)
+		{
+			Entry = TrimAutoMessageEntry(Left(MessageText,SplitAt));
+			MessageText = Mid(MessageText,SplitAt+2);
+		}
+		else
+		{
+			Entry = TrimAutoMessageEntry(MessageText);
+			MessageText = "";
+		}
+		if (Entry!="")
+			AutoMessageTexts.AddItem(Left(Entry,512));
+	}
+	AutoMessageIndex = 0;
+}
+
+function AdminSetAutoMessage(ExtPlayerController PC, bool bEnabled, int IntervalSeconds, string MessageText, string MessageColor)
+{
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bAutoMessageEnabled = bEnabled;
+	AutoMessageIntervalSeconds = Clamp(IntervalSeconds,30,3600);
+	AutoMessageText = Left(MessageText,512);
+	BuildAutoMessageList(MessageText);
+	AutoMessageColor = SanitizeAutoMessageColor(MessageColor);
+	NextAutoMessageTime = WorldInfo.TimeSeconds + AutoMessageIntervalSeconds;
+	SaveConfig();
+	PC.ClientMessage("Auto message "$(bAutoMessageEnabled ? "enabled." : "disabled."),'Priority');
+}
+
+function AutoMessageTick()
+{
+	local ExtPlayerController E;
+	local string MessageText, MessageColor;
+
+	if (!bAutoMessageEnabled || WorldInfo.TimeSeconds<NextAutoMessageTime || (AutoMessageText=="" && AutoMessageTexts.Length==0))
+		return;
+
+	NextAutoMessageTime = WorldInfo.TimeSeconds + Max(AutoMessageIntervalSeconds,30);
+	if (AutoMessageTexts.Length>0)
+	{
+		AutoMessageIndex = AutoMessageIndex % AutoMessageTexts.Length;
+		MessageText = AutoMessageTexts[AutoMessageIndex++];
+	}
+	else
+		MessageText = AutoMessageText;
+	MessageColor = ExtractAutoMessageColor(MessageText,AutoMessageColor);
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+		E.ClientZvampextAutoMessage(MessageText,MessageColor);
+}
+
+function bool FastForwardTrader(ExtPlayerController PC, bool bAdminForce)
+{
+	local KFGameReplicationInfo KFGRI;
+	local KFGameInfo KFGI;
+	local Zvampext_Endless ZGI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	KFGI = KFGameInfo(WorldInfo.Game);
+	if (KFGRI==None || KFGI==None || !KFGRI.bTraderIsOpen)
+	{
+		PC.ClientMessage("Trader is not open.",'Priority');
+		return false;
+	}
+
+	ZGI = Zvampext_Endless(KFGI);
+	if (ZGI!=None)
+		ZGI.ReleaseTraderAutoPause();
+	else
+		ReleaseSMLTraderPause();
+	KFGRI.bStopCountDown = false;
+	KFGRI.RemainingTime = 1;
+	KFGRI.RemainingMinute = 1;
+	KFGI.SkipTrader(1);
+	PC.ClientMessage(bAdminForce ? "Admin fast-forwarded trader time." : "Public fast-forwarded trader time.",'Priority');
+	return true;
+}
+
+function bool OpenTraderFor(ExtPlayerController PC, bool bAdminForce)
+{
+	local ExtPlayerController E;
+	local KFGameReplicationInfo KFGRI;
+	local KFGameInfo KFGI;
+
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	KFGI = KFGameInfo(WorldInfo.Game);
+	if (KFGRI==None || KFGI==None || KFGI.MyKFGRI==None)
+	{
+		PC.ClientMessage("Open trader is unavailable in this game state.",'Priority');
+		return false;
+	}
+	if (!KFGRI.bTraderIsOpen)
+	{
+		KFGI.MyKFGRI.bTraderIsOpen = true;
+		if (KFGI.MyKFGRI.NextTrader!=None)
+			KFGI.MyKFGRI.OpenTrader(300);
+		else if (KFGI.ScriptedTrader!=None || KFGI.TraderList.Length>0)
+			KFGI.MyKFGRI.OpenTraderNext(300);
+		else
+		{
+			PC.ClientMessage("Open trader failed: this map has no trader pod.",'Priority');
+			return false;
+		}
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			E.ClientMessage((bAdminForce ? "Admin opened trader time." : "Trader time opened."),'Priority');
+	}
+	PC.OpenTraderMenu(true);
+	PC.ClientRevampOpenTraderMenu();
+	PC.ClientMessage("Opened trader menu.",'Priority');
+	return true;
+}
+
+function PublicOpenTrader(ExtPlayerController PC)
+{
+	if (!bRevampTraderGuard || !bRevampTraderGuardPublicOpenTrader)
+	{
+		PC.ClientMessage("Public open trader is disabled.",'Priority');
+		return;
+	}
+	OpenTraderFor(PC,false);
+}
+
+function AdminFastForwardTrader(ExtPlayerController PC)
+{
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+	FastForwardTrader(PC,true);
+}
+
+function AdminOpenTrader(ExtPlayerController PC)
+{
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+	OpenTraderFor(PC,true);
+}
+
+function AdminGiveDosh(ExtPlayerController PC, int DoshAmount)
+{
+	local KFPlayerReplicationInfo KFPRI;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	KFPRI = KFPlayerReplicationInfo(PC.PlayerReplicationInfo);
+	if (KFPRI == None)
+	{
+		PC.ClientMessage("DoshMe failed: player replication info unavailable.",'Priority');
+		return;
+	}
+
+	DoshAmount = Clamp(DoshAmount, 1, 1000000);
+	KFPRI.AddDosh(DoshAmount, true);
+	KFPRI.bForceNetUpdate = true;
+	PC.ClientMessage("DoshMe added "$DoshAmount$" dosh.",'Priority');
+}
+
+final function int CountVoteEligiblePlayers()
+{
+	local ExtPlayerController E;
+	local int Count;
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+		if (E!=None && E.PlayerReplicationInfo!=None && !E.PlayerReplicationInfo.bOnlySpectator)
+			++Count;
+	return Max(Count,1);
+}
+
+final function bool HasProgressWaveVoted(ExtPlayerController PC)
+{
+	return (ProgressWaveYesVotes.Find(PC)!=INDEX_NONE || ProgressWaveNoVotes.Find(PC)!=INDEX_NONE);
+}
+
+final function bool HasNextMapVoted(ExtPlayerController PC)
+{
+	return (NextMapYesVotes.Find(PC)!=INDEX_NONE || NextMapNoVotes.Find(PC)!=INDEX_NONE);
+}
+
+function PlayerProgressWaveVoteCall(ExtPlayerController PC, int WaveCount)
+{
+	local ExtPlayerController E;
+	local string CallerName;
+
+	if (!bPlayerProgressWaveVoteEnabled)
+	{
+		PC.ClientMessage("[Zvamp] Player ProgressWave voting is disabled.",'Priority');
+		return;
+	}
+	if (bProgressWaveVoteActive)
+	{
+		PC.ClientMessage("[Zvamp] A ProgressWave vote is already active.",'Priority');
+		return;
+	}
+	WaveCount = Clamp(WaveCount,1,Max(PlayerProgressWaveVoteMax,1));
+	ProgressWaveVoteTarget = WaveCount;
+	ProgressWaveVoteCaller = PC;
+	ProgressWaveYesVotes.Length = 0;
+	ProgressWaveNoVotes.Length = 0;
+	ProgressWaveYesVotes.AddItem(PC);
+	bProgressWaveVoteActive = true;
+	CallerName = (PC.PlayerReplicationInfo!=None ? PC.PlayerReplicationInfo.PlayerName : "A player");
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+	{
+		if (E!=None && E.PlayerReplicationInfo!=None && !E.PlayerReplicationInfo.bOnlySpectator)
+		{
+			E.ClientMessage("[Zvamp] "$CallerName$" called vote: ProgressWave "$WaveCount$". Use Zvote yes/no or the popup.",'Priority');
+			E.ClientOpenProgressWaveVote(CallerName,WaveCount,Max(PlayerProgressWaveVoteSeconds,10));
+		}
+	}
+	SetTimer(Max(PlayerProgressWaveVoteSeconds,10),false,'FinishProgressWaveVote');
+	CheckProgressWaveVote();
+}
+
+function PlayerProgressWaveVoteAnswer(ExtPlayerController PC, bool bAccept)
+{
+	if (!bProgressWaveVoteActive || PC==None || HasProgressWaveVoted(PC))
+		return;
+	if (bAccept)
+		ProgressWaveYesVotes.AddItem(PC);
+	else ProgressWaveNoVotes.AddItem(PC);
+	PC.ClientMessage("[Zvamp] ProgressWave vote recorded: "$(bAccept ? "yes" : "no")$".",'Priority');
+	CheckProgressWaveVote();
+}
+
+function CheckProgressWaveVote()
+{
+	local int Needed;
+
+	if (!bProgressWaveVoteActive)
+		return;
+	Needed = Max(1,FCeil(float(CountVoteEligiblePlayers()) * FClamp(PlayerProgressWaveVotePct,0.01,1.f)));
+	if (ProgressWaveYesVotes.Length>=Needed)
+	{
+		FinishProgressWaveVote(true);
+	}
+	else if (ProgressWaveNoVotes.Length>CountVoteEligiblePlayers()-Needed)
+	{
+		FinishProgressWaveVote(false);
+	}
+}
+
+function FinishProgressWaveVote(optional bool bPassed)
+{
+	local ExtPlayerController E;
+
+	if (!bProgressWaveVoteActive)
+		return;
+	bProgressWaveVoteActive = false;
+	ClearTimer('FinishProgressWaveVote');
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+		if (E!=None)
+			E.ClientMessage("[Zvamp] ProgressWave vote "$(bPassed ? "passed" : "failed")$" ("$ProgressWaveYesVotes.Length$" yes, "$ProgressWaveNoVotes.Length$" no).",'Priority');
+	if (bPassed)
+		ExecuteProgressWave(ProgressWaveVoteCaller,ProgressWaveVoteTarget,false);
+	ProgressWaveYesVotes.Length = 0;
+	ProgressWaveNoVotes.Length = 0;
+	ProgressWaveVoteCaller = None;
+}
+
+function StartNextMapChoiceVote()
+{
+	local ExtPlayerController E;
+
+	if (bNextMapChoiceActive)
+		return;
+	bNextMapChoiceOffered = true;
+	bNextMapChoiceActive = true;
+	if (KF!=None)
+		NextMapChoiceWaveNum = KF.WaveNum;
+	else NextMapChoiceWaveNum = NextMapChoiceWave;
+	NextMapYesVotes.Length = 0;
+	NextMapNoVotes.Length = 0;
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+	{
+		if (E!=None && E.PlayerReplicationInfo!=None && !E.PlayerReplicationInfo.bOnlySpectator)
+		{
+			E.ClientMessage("[Zvamp] Wave "$NextMapChoiceWaveNum$" reached. Vote Keep Playing or Next Map.",'Priority');
+			E.ClientOpenNextMapVote(NextMapChoiceWaveNum,Max(NextMapChoiceSeconds,10));
+		}
+	}
+	SetTimer(Max(NextMapChoiceSeconds,10),false,'FinishNextMapChoiceVote');
+}
+
+function PlayerNextMapVoteAnswer(ExtPlayerController PC, bool bNextMap)
+{
+	if (!bNextMapChoiceActive || PC==None || HasNextMapVoted(PC))
+		return;
+	if (bNextMap)
+		NextMapYesVotes.AddItem(PC);
+	else NextMapNoVotes.AddItem(PC);
+	PC.ClientMessage("[Zvamp] Next map vote recorded: "$(bNextMap ? "next map" : "keep playing")$".",'Priority');
+	CheckNextMapChoiceVote();
+}
+
+function CheckNextMapChoiceVote()
+{
+	local int Needed;
+
+	if (!bNextMapChoiceActive)
+		return;
+	Needed = Max(1,FCeil(float(CountVoteEligiblePlayers()) * FClamp(NextMapChoicePct,0.01,1.f)));
+	if (NextMapYesVotes.Length>=Needed)
+		FinishNextMapChoiceVote(true);
+	else if (NextMapNoVotes.Length>CountVoteEligiblePlayers()-Needed)
+		FinishNextMapChoiceVote(false);
+}
+
+function OpenMapVoteForNextMap()
+{
+	local xVotingHandler MV;
+
+	if (!bEnableMapVote)
+		return;
+	foreach DynamicActors(class'xVotingHandler',MV)
+		break;
+	if (MV==None)
+	{
+		MV = Spawn(class'xVotingHandler');
+		MV.BaseMutator = Class;
+	}
+	if (MV!=None)
+		MV.StartMidGameVote(true);
+}
+
+function FinishNextMapChoiceVote(optional bool bNextMap)
+{
+	local ExtPlayerController E;
+
+	if (!bNextMapChoiceActive)
+		return;
+	bNextMapChoiceActive = false;
+	ClearTimer('FinishNextMapChoiceVote');
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+		if (E!=None)
+			E.ClientMessage("[Zvamp] Next map vote "$(bNextMap ? "passed" : "kept playing")$" ("$NextMapYesVotes.Length$" next, "$NextMapNoVotes.Length$" keep).",'Priority');
+	if (bNextMap)
+		OpenMapVoteForNextMap();
+	NextMapYesVotes.Length = 0;
+	NextMapNoVotes.Length = 0;
+}
+
+function AdminProgressWave(ExtPlayerController PC, int WaveCount)
+{
+	ExecuteProgressWave(PC,WaveCount,true);
+}
+
+function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequireAdmin)
+{
+	local KFGameInfo KFGI;
+	local KFGameInfo_Endless EndlessGI;
+	local KFGameReplicationInfo KFGRI;
+	local KFAISpawnManager SpawnManager;
+	local KFPawn_Monster Zed;
+	local Zvampext_Endless ZGI;
+	local int OldWave;
+	local int NewWave;
+	local int Damaged;
+	local int Removed;
+	local int TargetWave;
+
+	if (PC==None)
+		return;
+	if (bRequireAdmin && !HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGI == None || KFGRI == None)
+	{
+		PC.ClientMessage("ProgressWave failed: game state unavailable.",'Priority');
+		return;
+	}
+
+	ZGI = Zvampext_Endless(KFGI);
+	EndlessGI = KFGameInfo_Endless(KFGI);
+	if (EndlessGI == None)
+	{
+		PC.ClientMessage("ProgressWave failed: Endless game state unavailable.",'Priority');
+		return;
+	}
+	WaveCount = Clamp(WaveCount, 1, 100);
+	OldWave = KFGRI.WaveNum;
+	NewWave = Max(OldWave + WaveCount, 1);
+	TargetWave = Max(NewWave - 1, 0);
+	SpawnManager = KFGI.SpawnManager;
+
+	foreach WorldInfo.AllPawns(class'KFPawn_Monster', Zed)
+	{
+		if (Zed != None && Zed.IsAliveAndWell() && PlayerController(Zed.Controller) == None)
+		{
+			if (AdminKillZed(PC, Zed))
+			{
+				++Damaged;
+			}
+		}
+	}
+	Removed = ForceRemoveRemainingZeds(PC);
+
+	KFGI.AIAliveCount = 0;
+	KFGI.NumAISpawnsQueued = 0;
+	if (SpawnManager != None)
+	{
+		SpawnManager.WaveTotalAI = 0;
+		SpawnManager.LeftoverSpawnSquad.Length = 0;
+		if (SpawnManager.ActiveSpawner != None)
+		{
+			SpawnManager.ActiveSpawner.PendingSpawns.Length = 0;
+			SpawnManager.ActiveSpawner.bIsSpawning = false;
+		}
+	}
+
+	if (ZGI != None)
+	{
+		ZGI.WaveNum = TargetWave;
+	}
+	else if (EndlessGI != None)
+	{
+		EndlessGI.WaveNum = TargetWave;
+	}
+	KFGRI.WaveNum = TargetWave;
+	KFGRI.AIRemaining = 0;
+	KFGRI.bForceNetUpdate = true;
+
+	if (ZGI != None)
+	{
+		ZGI.ReleaseTraderAutoPause();
+	}
+	else
+	{
+		ReleaseSMLTraderPause();
+	}
+
+	EndlessGI.WaveEnded(WEC_WaveWon);
+	`log("[Zvamp] ProgressWave advanced from "$OldWave$" to "$NewWave$"; damaged="$Damaged@"removed="$Removed);
+	PC.ClientMessage("ProgressWave advanced from "$OldWave$" to "$NewWave$" and opened trader through wave-end flow. Removed "$Removed$" leftover zeds.",'Priority');
+}
+
+function RefreshNewItemsFor(ExtPlayerController PC)
+{
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+	if (bZvampextUIOnly)
+	{
+		PC.ClientMessage("[Zvamp] custom item refresh is disabled while bZvampextUIOnly=True.",'Priority');
+		return;
+	}
+
+	RefreshZvampextTraderItems(true, PC);
+	SendZvampextTraderItems(PC);
+}
+
+final function bool AdminKillZed(ExtPlayerController PC, KFPawn_Monster Zed)
+{
+	local int KillDamage;
+
+	if (PC==None || Zed==None || Zed.bDeleteMe || !Zed.IsAliveAndWell())
+		return false;
+
+	KillDamage = Max(Max(Zed.HealthMax,Zed.Health) + 100000, 1000000);
+	Zed.TakeDamage(KillDamage,PC,Zed.Location,vect(0,0,0),class'ExtDT_Ballistic_9mm',,PC.Pawn);
+	return true;
+}
+
+final function int ForceRemoveRemainingZeds(ExtPlayerController PC)
+{
+	local KFPawn_Monster Zed;
+	local int Count;
+
+	foreach WorldInfo.AllPawns(class'KFPawn_Monster', Zed)
+	{
+		if (Zed == None || Zed.bDeleteMe || PlayerController(Zed.Controller) != None)
+			continue;
+
+		if (Zed.IsAliveAndWell())
+		{
+			Zed.Health = 0;
+			Zed.Died(PC, class'DmgType_Suicided', Zed.Location);
+		}
+		if (!Zed.bDeleteMe)
+			Zed.Destroy();
+		++Count;
+	}
+
+	return Count;
+}
+
+function AdminBuildID(ExtPlayerController PC)
+{
+	if (PC == None || !HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		if (PC != None)
+			PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	PC.ClientMessage("[Zvamp] BuildID "$PC.ZvampextBuildID$" | "$ZvampextBuildID,'Priority');
+	`log("[Zvamp] BuildID requested by "$PC.PlayerReplicationInfo.PlayerName$": "$PC.ZvampextBuildID$" | "$ZvampextBuildID);
+}
+
+function AdminSetDoshThrowAmount(ExtPlayerController PC, int NewAmount)
+{
+	local ExtPlayerController E;
+
+	if (PC == None || !HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		if (PC != None)
+			PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	DoshThrowAmount = Clamp(NewAmount, 1, 1000000);
+	SaveConfig();
+	foreach WorldInfo.AllControllers(class'ExtPlayerController', E)
+		ApplyPickupOverridesToController(E);
+
+	PC.ClientMessage("[Zvamp] DoshThrowAmount set to "$DoshThrowAmount$".",'Priority');
+	`log("[Zvamp] DoshThrowAmount set to "$DoshThrowAmount@"by "$PC.PlayerReplicationInfo.PlayerName);
+}
+
+final function int ApplyZedSpawnerAliveLimit(int NewLimit)
+{
+	local Mutator M;
+	local string ClassName;
+
+	if (WorldInfo == None || WorldInfo.Game == None)
+		return -1;
+
+	for (M=WorldInfo.Game.BaseMutator; M!=None; M=M.NextMutator)
+	{
+		ClassName = Caps(string(M.Class));
+		if (M.IsA('ZedSpawner') || M.IsA('ZedSpawnerMut') || InStr(ClassName,"ZEDSPAWNER.")>=0)
+		{
+			ConsoleCommand("set ZedSpawner.ZedSpawner AliveSpawnLimit "$NewLimit);
+			ConsoleCommand("set ZedSpawner.ZedSpawnerMut AliveSpawnLimit "$NewLimit);
+			ConsoleCommand("set ZedSpawner.Mut AliveSpawnLimit "$NewLimit);
+			return NewLimit;
+		}
+	}
+	return -1;
+}
+
+function AdminRevampAction(ExtPlayerController PC, int Action)
+{
+	local ExtPlayerController E;
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+	local KFPawn_Monster Zed;
+	local KFAISpawnManager SpawnManager;
+	local Zvampext_Endless ZvampextGI;
+	local int Count, DiagWave, DiagRemaining;
+	local int i, DifficultyIndex, PlayerIndex, LivingPlayers, NewMaxMonsters, ZedSpawnerLimit;
+	local float SpawnMod;
+	local Controller C;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	switch (Action)
+	{
+	case 10: // Save all stats.
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			SavePlayerPerk(E);
+		PC.ClientMessage("Saved all dirty RPG player stats.",'Priority');
+		break;
+	case 11: // Admin force skip trader.
+		FastForwardTrader(PC,true);
+		break;
+	case 12: // Broadcast MOTD.
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+		{
+			SendMOTD(E);
+			E.ClientMessage("MOTD broadcast by admin.",'Priority');
+		}
+		break;
+	case 13: // Open trader.
+		OpenTraderFor(PC,true);
+		break;
+	case 14: // Restart map.
+		PC.ClientMessage("Restart map is disabled until the safe KF2 restart path is verified.",'Priority');
+		break;
+	case 15: // Enable cheats for local testing.
+		PC.ClientRevampSetCheats(true);
+		break;
+	case 16: // Toggle god mode for the admin.
+		PC.bRevampGodMode = !PC.bRevampGodMode;
+		if (PC.Pawn!=None && PC.bRevampGodMode)
+			PC.Pawn.Health = Max(PC.Pawn.Health, 1);
+		PC.ClientMessage("God mode "$(PC.bRevampGodMode ? "enabled." : "disabled."),'Priority');
+		break;
+	case 17: // Kill active zeds.
+		foreach WorldInfo.AllPawns(class'KFPawn_Monster',Zed)
+		{
+			if (Zed!=None && Zed.IsAliveAndWell() && PlayerController(Zed.Controller)==None
+				&& (PC.Pawn==None || VSizeSq(Zed.Location-PC.Pawn.Location) <= 810000000000.f))
+			{
+				if (AdminKillZed(PC,Zed))
+					++Count;
+			}
+		}
+		PC.ClientMessage("Damaged "$Count$" active zeds.",'Priority');
+		break;
+	case 18: // End wave.
+		KFGI = KFGameInfo(WorldInfo.Game);
+		KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+		SpawnManager = (KFGI!=None) ? KFGI.SpawnManager : None;
+		DiagWave = -1;
+		DiagRemaining = -1;
+		if (KFGRI!=None)
+		{
+			DiagWave = KFGRI.WaveNum;
+			DiagRemaining = KFGRI.AIRemaining;
+		}
+		if (KFGI!=None && SpawnManager!=None)
+		{
+			`log("[ZvampDiag] endwave before damage Wave="$DiagWave
+				@"AIAlive="$KFGI.AIAliveCount
+				@"AIRemaining="$DiagRemaining
+				@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
+				@"WaveTotalAI="$SpawnManager.WaveTotalAI);
+		}
+		foreach WorldInfo.AllPawns(class'KFPawn_Monster',Zed)
+		{
+			if (Zed!=None && Zed.IsAliveAndWell() && PlayerController(Zed.Controller)==None)
+			{
+				if (AdminKillZed(PC,Zed))
+					++Count;
+			}
+		}
+		if (KFGI!=None && SpawnManager!=None)
+		{
+			if (KFGRI!=None)
+			{
+				DiagWave = KFGRI.WaveNum;
+				DiagRemaining = KFGRI.AIRemaining;
+			}
+			`log("[ZvampDiag] endwave after damage Wave="$DiagWave
+				@"AIAlive="$KFGI.AIAliveCount
+				@"AIRemaining="$DiagRemaining
+				@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
+				@"WaveTotalAI="$SpawnManager.WaveTotalAI
+				@"Damaged="$Count);
+			if (Count == 0 && KFGI.AIAliveCount <= 1 && DiagRemaining <= 1)
+			{
+				`log("[ZvampDiag] endwave clearing orphaned zed counter Wave="$DiagWave
+					@"AIAlive="$KFGI.AIAliveCount
+					@"AIRemaining="$DiagRemaining
+					@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
+					@"WaveTotalAI="$SpawnManager.WaveTotalAI);
+				KFGI.AIAliveCount = 0;
+				if (KFGRI!=None)
+				{
+					KFGRI.AIRemaining = 0;
+					KFGRI.bForceNetUpdate = true;
+				}
+				ZvampextGI = Zvampext_Endless(KFGI);
+				if (ZvampextGI != None)
+				{
+					ZvampextGI.ClearZvampextOrphanedWaveCounter("admin endwave", KFGI.NumAISpawnsQueued);
+				}
+			}
+		}
+		PC.ClientMessage("Endwave damaged "$Count$" active zeds.",'Priority');
+		break;
+	case 19: // Pause or resume spawning.
+		KFGI = KFGameInfo(WorldInfo.Game);
+		if (KFGI==None || KFGI.SpawnManager==None)
+		{
+			PC.ClientMessage("Spawn manager unavailable.",'Priority');
+			break;
+		}
+		bRevampSpawnsPaused = !bRevampSpawnsPaused;
+		for (i=0; i<KFGI.SpawnManager.SpawnVolumes.Length; ++i)
+			if (KFGI.SpawnManager.SpawnVolumes[i]!=None)
+				KFGI.SpawnManager.SpawnVolumes[i].bCanUseForSpawning = !bRevampSpawnsPaused;
+		if (bRevampSpawnsPaused && KFGI.SpawnManager.ActiveSpawner!=None)
+		{
+			KFGI.SpawnManager.ActiveSpawner.PendingSpawns.Length = 0;
+			KFGI.SpawnManager.ActiveSpawner.bIsSpawning = false;
+		}
+		if (bRevampSpawnsPaused)
+		{
+			KFGI.NumAISpawnsQueued = 0;
+			KFGI.SpawnManager.LeftoverSpawnSquad.Length = 0;
+			KFGI.SpawnManager.TimeUntilNextSpawn = 999999.f;
+		}
+		else KFGI.SpawnManager.TimeUntilNextSpawn = FMin(KFGI.SpawnManager.TimeUntilNextSpawn,1.f);
+		PC.ClientMessage(bRevampSpawnsPaused ? "Spawns paused." : "Spawns resumed.",'Priority');
+		break;
+	case 20: // Increase max monsters.
+	case 21: // Decrease max monsters.
+		KFGI = KFGameInfo(WorldInfo.Game);
+		SpawnManager = (KFGI!=None) ? KFGI.SpawnManager : None;
+		if (SpawnManager==None)
+		{
+			PC.ClientMessage("Spawn manager unavailable.",'Priority');
+			break;
+		}
+		DifficultyIndex = Clamp(KFGI.GameDifficulty,0,SpawnManager.PerDifficultyMaxMonsters.Length-1);
+		foreach WorldInfo.AllControllers(class'Controller',C)
+			if (C!=None && C.PlayerReplicationInfo!=None && !C.PlayerReplicationInfo.bOnlySpectator && C.GetTeamNum()==0 && C.Pawn!=None && C.Pawn.Health>0)
+				++LivingPlayers;
+		if (LivingPlayers<=0)
+			LivingPlayers = Max(KFGI.GetNumPlayers(),1);
+		PlayerIndex = Clamp(LivingPlayers-1,0,SpawnManager.PerDifficultyMaxMonsters[DifficultyIndex].MaxMonsters.Length-1);
+		NewMaxMonsters = Clamp(SpawnManager.PerDifficultyMaxMonsters[DifficultyIndex].MaxMonsters[PlayerIndex] + (Action==20 ? 4 : -4),1,200);
+		SpawnManager.PerDifficultyMaxMonsters[DifficultyIndex].MaxMonsters[PlayerIndex] = NewMaxMonsters;
+		ZedSpawnerLimit = ApplyZedSpawnerAliveLimit(NewMaxMonsters);
+		if (KFGameReplicationInfo(WorldInfo.GRI)!=None)
+			KFGameReplicationInfo(WorldInfo.GRI).CurrentMaxMonsters = SpawnManager.GetMaxMonsters();
+		if (ZedSpawnerLimit>=0)
+			PC.ClientMessage("Max monsters now "$SpawnManager.GetMaxMonsters()$" for "$LivingPlayers$" living player(s). ZedSpawner alive limit "$ZedSpawnerLimit$".",'Priority');
+		else PC.ClientMessage("Max monsters now "$SpawnManager.GetMaxMonsters()$" for "$LivingPlayers$" living player(s). ZedSpawner limit not found.",'Priority');
+		break;
+	case 22: // Faster spawns.
+	case 23: // Slower spawns.
+		KFGI = KFGameInfo(WorldInfo.Game);
+		SpawnManager = (KFGI!=None) ? KFGI.SpawnManager : None;
+		if (SpawnManager==None)
+		{
+			PC.ClientMessage("Spawn manager unavailable.",'Priority');
+			break;
+		}
+		for (i=0; i<ArrayCount(SpawnManager.EarlyWavesSpawnTimeModByPlayers); ++i)
+		{
+			if (SpawnManager.EarlyWavesSpawnTimeModByPlayers[i]<=0.f)
+				SpawnManager.EarlyWavesSpawnTimeModByPlayers[i] = 1.f;
+			if (SpawnManager.LateWavesSpawnTimeModByPlayers[i]<=0.f)
+				SpawnManager.LateWavesSpawnTimeModByPlayers[i] = 1.f;
+			SpawnManager.EarlyWavesSpawnTimeModByPlayers[i] = FClamp(SpawnManager.EarlyWavesSpawnTimeModByPlayers[i] * (Action==22 ? 0.85 : 1.15),0.05,5.0);
+			SpawnManager.LateWavesSpawnTimeModByPlayers[i] = FClamp(SpawnManager.LateWavesSpawnTimeModByPlayers[i] * (Action==22 ? 0.85 : 1.15),0.05,5.0);
+		}
+		PlayerIndex = Clamp(Max(KFGI.GetNumPlayers(),1)-1,0,ArrayCount(SpawnManager.EarlyWavesSpawnTimeModByPlayers)-1);
+		SpawnMod = FMax(SpawnManager.EarlyWavesSpawnTimeModByPlayers[PlayerIndex],SpawnManager.LateWavesSpawnTimeModByPlayers[PlayerIndex]);
+		if (Action==22)
+			SpawnManager.TimeUntilNextSpawn = FMin(SpawnManager.TimeUntilNextSpawn,1.f);
+		PC.ClientMessage((Action==22 ? "Spawn rate increased. " : "Spawn rate decreased. ")$"Spawn time mod: "$SpawnMod,'Priority');
+		break;
+	case 24: // Pause trader countdown.
+		KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+		if (KFGRI==None || !KFGRI.bTraderIsOpen)
+		{
+			PC.ClientMessage("Trader is not open.",'Priority');
+			break;
+		}
+		KFGRI.bStopCountDown = true;
+		KFGRI.bForceNetUpdate = true;
+		PC.ClientMessage("Trader timer paused. Players can still vote/skip trader normally.",'Priority');
+		break;
+	default:
+		PC.ClientMessage("Unknown revamp admin action.",'Priority');
+	}
+}
+
+function AdminSetTraderGuard(ExtPlayerController PC, bool bEnabled, bool bBlockSkip, bool bPublicOpenTrader)
+{
+	local ExtPlayerController E;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bRevampTraderGuard = bEnabled;
+	bRevampTraderGuardBlockSkip = bBlockSkip;
+	bRevampTraderGuardPublicOpenTrader = bPublicOpenTrader;
+	SaveConfig();
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+		E.ClientSetRevampTraderGuard(bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader);
+
+	PC.ClientMessage("TraderGuard settings updated.",'Priority');
+}
+
+function AdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue)
+{
+	local ExtPlayerController E;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bAdminGrenadeDamage = bGrenadeDamage;
+	AdminGrenadeDamageValue = FMax(GrenadeDamageValue,0.f);
+	bAdminGrenadeRadius = bGrenadeRadius;
+	AdminGrenadeRadiusValue = FMax(GrenadeRadiusValue,0.f);
+	bAdminAmmoPickup = bAmmoPickup;
+	AdminAmmoPickupValue = FMax(AmmoPickupValue,0.f);
+	bAdminItemPickup = bItemPickup;
+	AdminItemPickupValue = FMax(ItemPickupValue,0.f);
+	bAdminArmorPickup = bArmorPickup;
+	AdminArmorPickupValue = FMax(ArmorPickupValue,0.f);
+	SaveConfig();
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+	{
+		E.ClientSetAdminPickupOverrides(bAdminGrenadeDamage,AdminGrenadeDamageValue,bAdminGrenadeRadius,AdminGrenadeRadiusValue,bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+		ApplyPickupOverridesToController(E);
+		SendSpawnedPerkUILayout(E);
+	}
+
+	PC.ClientMessage("Pickup and grenade override settings updated.",'Priority');
 }
 
 function PlayerChangeSpec(ExtPlayerController PC, bool bSpectator)
@@ -1600,7 +3445,7 @@ function InitWebAdmin(ExtWebAdmin_UI UI)
 {
 	local int i;
 
-	UI.AddSettingsPage("Main Server Ext",Class,WebConfigs,WebAdminGetValue,WebAdminSetValue);
+	UI.AddSettingsPage("Zvampext",Class,WebConfigs,WebAdminGetValue,WebAdminSetValue);
 	for (i=0; i<LoadedPerks.Length; ++i)
 		LoadedPerks[i].Static.InitWebAdmin(UI);
 }
@@ -1619,6 +3464,24 @@ function string WebAdminGetValue(name PropName, int ElementIndex)
 		return string(StatAutoSaveWaves);
 	case 'PostGameRespawnCost':
 		return string(PostGameRespawnCost);
+	case 'DoshThrowAmount':
+		return string(DoshThrowAmount);
+	case 'bPlayerProgressWaveVoteEnabled':
+		return string(bPlayerProgressWaveVoteEnabled);
+	case 'PlayerProgressWaveVoteMax':
+		return string(PlayerProgressWaveVoteMax);
+	case 'PlayerProgressWaveVotePct':
+		return string(PlayerProgressWaveVotePct);
+	case 'PlayerProgressWaveVoteSeconds':
+		return string(PlayerProgressWaveVoteSeconds);
+	case 'bNextMapChoiceEnabled':
+		return string(bNextMapChoiceEnabled);
+	case 'NextMapChoiceWave':
+		return string(NextMapChoiceWave);
+	case 'NextMapChoicePct':
+		return string(NextMapChoicePct);
+	case 'NextMapChoiceSeconds':
+		return string(NextMapChoiceSeconds);
 	case 'bKillMessages':
 		return string(bKillMessages);
 	case 'LargeMonsterHP':
@@ -1631,6 +3494,42 @@ function string WebAdminGetValue(name PropName, int ElementIndex)
 		return string(bNoBoomstickJumping);
 	case 'bNoAdminCommands':
 		return string(bNoAdminCommands);
+	case 'bRevampTraderGuard':
+		return string(bRevampTraderGuard);
+	case 'bRevampTraderGuardBlockSkip':
+		return string(bRevampTraderGuardBlockSkip);
+	case 'bRevampTraderGuardPublicOpenTrader':
+		return string(bRevampTraderGuardPublicOpenTrader);
+	case 'bZvampextAutoEnableCheats':
+		return string(bZvampextAutoEnableCheats);
+	case 'bZvampextUIOnly':
+		return string(bZvampextUIOnly);
+	case 'bVampUIEndMatchEnabled':
+		return string(bVampUIEndMatchEnabled);
+	case 'bAdminGrenadeDamage':
+		return string(bAdminGrenadeDamage);
+	case 'AdminGrenadeDamageValue':
+		return string(AdminGrenadeDamageValue);
+	case 'bAdminGrenadeRadius':
+		return string(bAdminGrenadeRadius);
+	case 'AdminGrenadeRadiusValue':
+		return string(AdminGrenadeRadiusValue);
+	case 'bAdminAmmoPickup':
+		return string(bAdminAmmoPickup);
+	case 'AdminAmmoPickupValue':
+		return string(AdminAmmoPickupValue);
+	case 'bAdminItemPickup':
+		return string(bAdminItemPickup);
+	case 'AdminItemPickupValue':
+		return string(AdminItemPickupValue);
+	case 'bAdminArmorPickup':
+		return string(bAdminArmorPickup);
+	case 'AdminArmorPickupValue':
+		return string(AdminArmorPickupValue);
+	case 'SpawnedPerkUILayout':
+		return (ElementIndex==-1 ? string(SpawnedPerkUILayout.Length) : SpawnedPerkUILayout[ElementIndex]);
+	case 'MidGameMenuLayout':
+		return (ElementIndex==-1 ? string(MidGameMenuLayout.Length) : MidGameMenuLayout[ElementIndex]);
 	case 'bDumpXMLStats':
 		return string(bDumpXMLStats);
 	case 'bRagdollFromFall':
@@ -1653,6 +3552,10 @@ function string WebAdminGetValue(name PropName, int ElementIndex)
 		return (ElementIndex==-1 ? string(CustomChars.Length) : CustomChars[ElementIndex]);
 	case 'AdminCommands':
 		return (ElementIndex==-1 ? string(AdminCommands.Length) : AdminCommands[ElementIndex]);
+	case 'RevampAdminSteamIDs':
+		return (ElementIndex==-1 ? string(RevampAdminSteamIDs.Length) : RevampAdminSteamIDs[ElementIndex]);
+	case 'ZvampextAdminIDs':
+		return (ElementIndex==-1 ? string(ZvampextAdminIDs.Length) : ZvampextAdminIDs[ElementIndex]);
 	case 'ServerMOTD':
 		return Repl(ServerMOTD,"|",Chr(10));
 	case 'BonusGameSongs':
@@ -1678,6 +3581,8 @@ final function UpdateArray(out array<string> Ar, int Index, const out string Val
 
 function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 {
+	local ExtPlayerController E;
+
 	switch (PropName)
 	{
 	case 'StatFileDir':
@@ -1690,6 +3595,27 @@ function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 		StatAutoSaveWaves = int(Value);		break;
 	case 'PostGameRespawnCost':
 		PostGameRespawnCost = int(Value);	break;
+	case 'DoshThrowAmount':
+		DoshThrowAmount = Clamp(int(Value),1,1000000);
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			ApplyPickupOverridesToController(E);
+		break;
+	case 'bPlayerProgressWaveVoteEnabled':
+		bPlayerProgressWaveVoteEnabled = bool(Value);	break;
+	case 'PlayerProgressWaveVoteMax':
+		PlayerProgressWaveVoteMax = Clamp(int(Value),1,100);	break;
+	case 'PlayerProgressWaveVotePct':
+		PlayerProgressWaveVotePct = FClamp(float(Value),0.01,1.f);	break;
+	case 'PlayerProgressWaveVoteSeconds':
+		PlayerProgressWaveVoteSeconds = Max(int(Value),10);	break;
+	case 'bNextMapChoiceEnabled':
+		bNextMapChoiceEnabled = bool(Value);	break;
+	case 'NextMapChoiceWave':
+		NextMapChoiceWave = Max(int(Value),0);	break;
+	case 'NextMapChoicePct':
+		NextMapChoicePct = FClamp(float(Value),0.01,1.f);	break;
+	case 'NextMapChoiceSeconds':
+		NextMapChoiceSeconds = Max(int(Value),10);	break;
 	case 'bKillMessages':
 		bKillMessages = bool(Value);		break;
 	case 'LargeMonsterHP':
@@ -1704,6 +3630,51 @@ function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 		bEnableMapVote = bool(Value);		break;
 	case 'bNoAdminCommands':
 		bNoAdminCommands = bool(Value);		break;
+	case 'bRevampTraderGuard':
+		bRevampTraderGuard = bool(Value);		break;
+	case 'bRevampTraderGuardBlockSkip':
+		bRevampTraderGuardBlockSkip = bool(Value);	break;
+	case 'bRevampTraderGuardPublicOpenTrader':
+		bRevampTraderGuardPublicOpenTrader = bool(Value);	break;
+	case 'bZvampextAutoEnableCheats':
+		bZvampextAutoEnableCheats = bool(Value);	break;
+	case 'bZvampextUIOnly':
+		bZvampextUIOnly = bool(Value);	break;
+	case 'bVampUIEndMatchEnabled':
+		bVampUIEndMatchEnabled = bool(Value);
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			E.ClientSetVampUIEndMatchEnabled(bVampUIEndMatchEnabled);
+		break;
+	case 'bAdminGrenadeDamage':
+		bAdminGrenadeDamage = bool(Value);	break;
+	case 'AdminGrenadeDamageValue':
+		AdminGrenadeDamageValue = float(Value);	break;
+	case 'bAdminGrenadeRadius':
+		bAdminGrenadeRadius = bool(Value);	break;
+	case 'AdminGrenadeRadiusValue':
+		AdminGrenadeRadiusValue = float(Value);	break;
+	case 'bAdminAmmoPickup':
+		bAdminAmmoPickup = bool(Value);	break;
+	case 'AdminAmmoPickupValue':
+		AdminAmmoPickupValue = float(Value);	break;
+	case 'bAdminItemPickup':
+		bAdminItemPickup = bool(Value);	break;
+	case 'AdminItemPickupValue':
+		AdminItemPickupValue = float(Value);	break;
+	case 'bAdminArmorPickup':
+		bAdminArmorPickup = bool(Value);	break;
+	case 'AdminArmorPickupValue':
+		AdminArmorPickupValue = float(Value);	break;
+	case 'SpawnedPerkUILayout':
+		UpdateArray(SpawnedPerkUILayout,ElementIndex,Value);
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			SendSpawnedPerkUILayout(E);
+		break;
+	case 'MidGameMenuLayout':
+		UpdateArray(MidGameMenuLayout,ElementIndex,Value);
+		foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+			SendMidGameMenuLayout(E);
+		break;
 	case 'bDumpXMLStats':
 		bDumpXMLStats = bool(Value);		break;
 	case 'bNoBoomstickJumping':
@@ -1726,6 +3697,12 @@ function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 		UpdateArray(CustomChars,ElementIndex,Value);	break;
 	case 'AdminCommands':
 		UpdateArray(AdminCommands,ElementIndex,Value);	break;
+	case 'RevampAdminSteamIDs':
+		UpdateArray(RevampAdminSteamIDs,ElementIndex,Value);
+		break;
+	case 'ZvampextAdminIDs':
+		UpdateArray(ZvampextAdminIDs,ElementIndex,Value);
+		break;
 	case 'BonusGameSongs':
 		UpdateArray(BonusGameSongs,ElementIndex,Value);	break;
 	case 'BonusGameFX':
@@ -1740,7 +3717,8 @@ function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 
 defaultproperties
 {
-	GroupNames.Add("ServerExt")
+	GroupNames.Add("Zvampext")
+	ZvampextBuildID="ServerExtMut 2026-05-19 mapvote-player-progress-vote-chat"
 
 	// Main devs
 	DevList.Add("0x0110000100E8984E") // Marco
@@ -1754,6 +3732,15 @@ defaultproperties
 	WebConfigs.Add((PropType=0,PropName="ForcedMaxPlayers",UIName="Server Max Players",UIDesc="A forced max players value of the server (0 = use standard KF2 setting)"))
 	WebConfigs.Add((PropType=0,PropName="PlayerRespawnTime",UIName="Respawn Time",UIDesc="Players respawn time in seconds after they die (0 = no respawning)"))
 	WebConfigs.Add((PropType=0,PropName="PostGameRespawnCost",UIName="Post-Game Respawn Cost",UIDesc="Amount of dosh it'll cost to be respawned after end-game (only for custom gametypes that support this)."))
+	WebConfigs.Add((PropType=0,PropName="DoshThrowAmount",UIName="Dosh Throw Amount",UIDesc="Amount of dosh dropped per money throw."))
+	WebConfigs.Add((PropType=1,PropName="bPlayerProgressWaveVoteEnabled",UIName="Enable Player ProgressWave Vote",UIDesc="Allow players to call Zvote progresswave <waves>."))
+	WebConfigs.Add((PropType=0,PropName="PlayerProgressWaveVoteMax",UIName="Player ProgressWave Max",UIDesc="Maximum wave jump a player vote can request."))
+	WebConfigs.Add((PropType=0,PropName="PlayerProgressWaveVotePct",UIName="Player ProgressWave Vote Pct",UIDesc="Fraction of eligible players needed for ProgressWave vote success, for example 0.51."))
+	WebConfigs.Add((PropType=0,PropName="PlayerProgressWaveVoteSeconds",UIName="Player ProgressWave Vote Seconds",UIDesc="Seconds before a player ProgressWave vote expires."))
+	WebConfigs.Add((PropType=1,PropName="bNextMapChoiceEnabled",UIName="Enable Next Map Choice",UIDesc="At the configured wave, ask players to keep playing or open mapvote."))
+	WebConfigs.Add((PropType=0,PropName="NextMapChoiceWave",UIName="Next Map Choice Wave",UIDesc="Wave number that opens the Keep Playing / Next Map prompt. 0 disables until configured."))
+	WebConfigs.Add((PropType=0,PropName="NextMapChoicePct",UIName="Next Map Choice Vote Pct",UIDesc="Fraction of eligible players needed to open mapvote, for example 0.51."))
+	WebConfigs.Add((PropType=0,PropName="NextMapChoiceSeconds",UIName="Next Map Choice Seconds",UIDesc="Seconds before the Keep Playing / Next Map vote expires."))
 	WebConfigs.Add((PropType=0,PropName="StatAutoSaveWaves",UIName="Stat Auto-Save Waves",UIDesc="How often should stats be auto-saved (1 = every wave, 2 = every second wave etc)"))
 	WebConfigs.Add((PropType=0,PropName="MinUnloadPerkLevel",UIName="Min Unload Perk Level",UIDesc="Minimum level a player should be on before they can use the perk stat unload (-1 = never)."))
 	WebConfigs.Add((PropType=0,PropName="UnloadPerkExpCost",UIName="Perk Unload XP Cost",UIDesc="The percent of XP it costs for a player to use a perk unload (1 = all XP, 0 = none)."))
@@ -1763,6 +3750,24 @@ defaultproperties
 	WebConfigs.Add((PropType=1,PropName="bEnableMapVote",UIName="Enable MapVote",UIDesc="Enable MapVote X on this server"))
 	WebConfigs.Add((PropType=1,PropName="bNoBoomstickJumping",UIName="No Boomstick Jumps",UIDesc="Disable boomstick knockback, so people can't glitch with it on maps"))
 	WebConfigs.Add((PropType=1,PropName="bNoAdminCommands",UIName="Disable Admin menu",UIDesc="Disable admin menu commands so admins can't modify XP or levels of players"))
+	WebConfigs.Add((PropType=1,PropName="bRevampTraderGuard",UIName="Enable TraderGuard",UIDesc="Enable revamp trader-time protection controls for Endless servers"))
+	WebConfigs.Add((PropType=1,PropName="bRevampTraderGuardBlockSkip",UIName="TraderGuard Blocks Skip",UIDesc="Block non-admin skip-trader votes while TraderGuard is enabled"))
+	WebConfigs.Add((PropType=1,PropName="bRevampTraderGuardPublicOpenTrader",UIName="Public Open Trader",UIDesc="Let non-admin players use RvOpenTrader while TraderGuard is enabled"))
+	WebConfigs.Add((PropType=1,PropName="bZvampextAutoEnableCheats",UIName="Auto Enable Admin Cheats",UIDesc="Automatically request Admin EnableCheats for configured Zvampext admins after login."))
+	WebConfigs.Add((PropType=1,PropName="bZvampextUIOnly",UIName="Zvampext UI Only",UIDesc="Keep ServerExt/Zvampext UI plumbing active while skipping pawn replacement, compatibility defaults, and custom trader item injection for experimental use with another Game= class."))
+	WebConfigs.Add((PropType=1,PropName="bVampUIEndMatchEnabled",UIName="Vamp UI End Match Handoff",UIDesc="Close Zvampext custom UI after victory or defeat so vanilla endmatch and mapvote UI can take over."))
+	WebConfigs.Add((PropType=1,PropName="bAdminGrenadeDamage",UIName="Override Grenade Damage",UIDesc="Admin/server-rule toggle for custom grenade damage scaling."))
+	WebConfigs.Add((PropType=0,PropName="AdminGrenadeDamageValue",UIName="Grenade Damage Value",UIDesc="Custom grenade damage scale used when Override Grenade Damage is enabled."))
+	WebConfigs.Add((PropType=1,PropName="bAdminGrenadeRadius",UIName="Override Grenade Radius",UIDesc="Admin/server-rule toggle for custom grenade radius scaling."))
+	WebConfigs.Add((PropType=0,PropName="AdminGrenadeRadiusValue",UIName="Grenade Radius Value",UIDesc="Custom grenade radius scale used when Override Grenade Radius is enabled."))
+	WebConfigs.Add((PropType=1,PropName="bAdminAmmoPickup",UIName="Override Ammo Pickup",UIDesc="Admin/server-rule toggle for custom ammo pickup scaling."))
+	WebConfigs.Add((PropType=0,PropName="AdminAmmoPickupValue",UIName="Ammo Pickup Value",UIDesc="Custom ammo pickup scale used when Override Ammo Pickup is enabled."))
+	WebConfigs.Add((PropType=1,PropName="bAdminItemPickup",UIName="Override Item Pickup",UIDesc="Admin/server-rule toggle for custom item pickup scaling."))
+	WebConfigs.Add((PropType=0,PropName="AdminItemPickupValue",UIName="Item Pickup Value",UIDesc="Custom item pickup scale used when Override Item Pickup is enabled."))
+	WebConfigs.Add((PropType=1,PropName="bAdminArmorPickup",UIName="Override Armor Pickup",UIDesc="Admin/server-rule toggle for custom armor pickup scaling."))
+	WebConfigs.Add((PropType=0,PropName="AdminArmorPickupValue",UIName="Armor Pickup Value",UIDesc="Custom armor pickup scale used when Override Armor Pickup is enabled."))
+	WebConfigs.Add((PropType=2,PropName="SpawnedPerkUILayout",UIName="Spawned Perk UI Layout",UIDesc="Semicolon-separated spawned perk menu layout chunks; split long layout text across multiple rows to keep the server config stable.",NumElements=-1))
+	WebConfigs.Add((PropType=2,PropName="MidGameMenuLayout",UIName="Midgame Menu Layout",UIDesc="Semicolon-separated midgame menu shell/pager/button/color layout chunks; split long layout text across multiple rows to keep the server config stable.",NumElements=-1))
 	WebConfigs.Add((PropType=1,PropName="bDumpXMLStats",UIName="Dump XML stats",UIDesc="Dump XML stat files for some external stat loggers"))
 	WebConfigs.Add((PropType=1,PropName="bRagdollFromFall",UIName="Ragdoll From Fall",UIDesc="Make players ragdoll if they fall from a high place"))
 	WebConfigs.Add((PropType=1,PropName="bRagdollFromMomentum",UIName="Ragdoll From Momentum",UIDesc="Make players ragdoll if they take a damage with high momentum transfer"))
@@ -1773,6 +3778,8 @@ defaultproperties
 	WebConfigs.Add((PropType=2,PropName="PerkClasses",UIName="Perk Classes",UIDesc="List of RPG perks players can play as (careful with removing them, because any perks removed will permanently delete the gained XP for every player for that perk)!",NumElements=-1))
 	WebConfigs.Add((PropType=2,PropName="CustomChars",UIName="Custom Chars",UIDesc="List of custom characters for this server (prefix with * to mark as admin character).",NumElements=-1))
 	WebConfigs.Add((PropType=2,PropName="AdminCommands",UIName="Admin Commands",UIDesc="List of Admin commands to show on scoreboard UI for admins (use : to split actual command with display name for the command)",NumElements=-1))
+	WebConfigs.Add((PropType=2,PropName="RevampAdminSteamIDs",UIName="Zvampext Admin SteamIDs",UIDesc="Steam Unique IDs that should automatically receive Zvampext admin UI access, for example 0x0110000104BC56AA.",NumElements=-1))
+	WebConfigs.Add((PropType=2,PropName="ZvampextAdminIDs",UIName="Zvampext Admin IDs",UIDesc="Admin IDs accepted as SteamID64, STEAM_0:X:Y, or KF2 hex UniqueNetId.",NumElements=-1))
 	WebConfigs.Add((PropType=3,PropName="ServerMOTD",UIName="MOTD",UIDesc="Message of the Day"))
 	WebConfigs.Add((PropType=2,PropName="BonusGameSongs",UIName="Bonus Game Songs",UIDesc="List of custom musics to play during level change pong game.",NumElements=-1))
 	WebConfigs.Add((PropType=2,PropName="BonusGameFX",UIName="Bonus Game FX",UIDesc="List of custom FX to play on pong game.",NumElements=-1))

@@ -52,6 +52,29 @@ function ShowMenu()
 	}
 }
 
+function DrawMenu()
+{
+	local float W,H;
+
+	W = CompPos[2];
+	H = CompPos[3];
+
+	Canvas.SetDrawColor(34,34,38,105);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,H*0.82);
+	Canvas.SetDrawColor(82,55,142,205);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,4.f);
+	Canvas.SetPos(W*0.025,H*0.055+H*0.82-4.f);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.93,4.f);
+	Canvas.SetPos(W*0.025,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(4.f,H*0.82);
+	Canvas.SetPos(W*0.025+W*0.93-4.f,H*0.055);
+	Owner.CurrentStyle.DrawWhiteBox(4.f,H*0.82);
+
+	Super.DrawMenu();
+}
+
 function Timer()
 {
 	if (!ExtPlayerController(GetPlayer()).bMOTDReceived)

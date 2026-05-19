@@ -102,7 +102,7 @@ final function DrawClippedText(string S, float TScale, float MaxX)
 
 defaultproperties
 {
-	LableColor=(R=255,G=255,B=255,A=255)
+	LableColor=(R=218,G=207,B=238,A=255)
 	FontScale=0
 	LableWidth=0.5
 	bScaleByFontSize=true

@@ -25,6 +25,8 @@ var() float BorderWidth,ButtonAxisSize; // Width for buttons.
 
 var int NumButtons,CurrentPageNum,PageComponentIndex;
 var array<KFGUI_Button> PageButtons;
+var byte BackPanelR,BackPanelG,BackPanelB,BackPanelA;
+var float BackPanelX,BackPanelY,BackPanelW,BackPanelH;
 
 // Remember to call InitMenu() on the newly created page after.
 final function KFGUI_Base AddPage(class<KFGUI_Base> PageClass, optional out KFGUI_Button Button)
@@ -144,12 +146,21 @@ function PreDraw()
 function DrawMenu()
 {
 	Canvas.SetPos(0,0);
-	Canvas.SetDrawColor(48,16,16,86);
-	Owner.CurrentStyle.DrawWhiteBox(CompPos[2],CompPos[3]);
+	Canvas.SetDrawColor(BackPanelR,BackPanelG,BackPanelB,BackPanelA);
+	Canvas.SetPos(CompPos[2]*BackPanelX,CompPos[3]*BackPanelY);
+	Owner.CurrentStyle.DrawWhiteBox(CompPos[2]*BackPanelW,CompPos[3]*BackPanelH);
 }
 
 defaultproperties
 {
+	BackPanelX=0
+	BackPanelY=0
+	BackPanelW=1
+	BackPanelH=1
+	BackPanelR=40
+	BackPanelG=40
+	BackPanelB=44
+	BackPanelA=99
 	BorderWidth=0.05
 	ButtonAxisSize=0.08
 	CurrentPageNum=-1

@@ -1,10 +1,10 @@
-# Server Extension
+# Zvampext
 
-[![Banner](https://images.steamusercontent.com/ugc/13995596367634890662/5BDCA0AD6D015045BBBEA323681AE422349943DE/?imw=637&imh=358&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true)]([https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955))
+[![Banner](https://images.steamusercontent.com/ugc/13995596367634890662/5BDCA0AD6D015045BBBEA323681AE422349943DE/?imw=637&imh=358&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true)](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955)
 
-[![Steam Workshop](https://img.shields.io/static/v1?message=workshop&logo=steam&labelColor=gray&color=blue&logoColor=white&label=steam%20)](https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712)
-[![Steam Downloads](https://img.shields.io/steam/downloads/2085786712)](https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712)
-[![Steam Favorites](https://img.shields.io/steam/favorites/2085786712)](https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712)
+[![Steam Workshop](https://img.shields.io/static/v1?message=workshop&logo=steam&labelColor=gray&color=blue&logoColor=white&label=steam%20)](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955)
+[![Steam Downloads](https://img.shields.io/steam/downloads/3726663955)](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955)
+[![Steam Favorites](https://img.shields.io/steam/favorites/3726663955)](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/GenZmeY/KF2-Server-Extension)](CHANGELOG.md)
 [![GitHub](https://img.shields.io/github/license/GenZmeY/KF2-Server-Extension)](COPYING)
 
@@ -13,8 +13,11 @@ This mod replaces current perk system in [Killing Floor 2](https://en.wikipedia.
 
 This is a further development of the ServerExt mutator from [Marco](https://forums.tripwireinteractive.com/index.php?threads/mutator-server-extension-mod.109463) and [Forrest Mark X](https://github.com/ForrestMarkX/KF2-Server-Extension).  
 
+## Zvampext V2.0
+This working copy is the Zvampext V2.0 first-release revamp of ServerExt. It keeps the `ServerExt` and `ServerExtMut` package/class names for compatibility while adding the owned `ServerExtMut.Zvampext_Endless` game class, Perk V2 UI, custom item config support, trait icons, and dedicated compatibility helpers.
+
 ## Usage & Setup
-See [steam workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=2085786712)  
+See the [Steam Workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955) and the [V2 setup page](docs/index.md).  
 
 ## Build
 **Note:** If you want to build/brew/publish/test a mutator without git-bash and external scripts, follow [these instructions](https://tripwireinteractive.atlassian.net/wiki/spaces/KF2SW/pages/26247172/KF2+Code+Modding+How-to) instead of what is described here.  
@@ -59,9 +62,9 @@ The brewed files will be here:
 - [Cloud](https://steamcommunity.com/profiles/76561198105638699) - Help with instructions for solving the issue of missing configs  
 - The cat on [the cover](PublicationContent/preview.png) is [Meawbin](https://x.com/meawbinneko) (original character by [Cotton Valent](https://x.com/horrormove)).  
 
-## Status: Completed
-- The mutator works with the current version of the game (v1150) and I have implemented everything I planned.  
-- Development has stopped: I no longer have the time or motivation to maintain this mod. No further updates or bug fixes are planned.  
+## Status
+- Zvampext V2.0 is the first release milestone of this revamp.
+- Future patches and compatibility fixes continue from this baseline.
 
 ## Mirrors
 - https://github.com/GenZmeY/KF2-Server-Extension  

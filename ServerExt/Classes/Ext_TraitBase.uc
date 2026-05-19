@@ -29,6 +29,7 @@ var array<FWebAdminConfigInfo> WebConfigs;
 
 var() class<Ext_TGroupBase> TraitGroup; // With groups you can prevent player from buying multiple traits of same group.
 var() localized string TraitName,Description; // UI name.
+var() Texture2D TraitIcon; // Optional card icon for the perk trait UI.
 var() byte NumLevels; // Maximum number of levels.
 var config array<int> LevelCosts;
 var() array<int> DefLevelCosts; // Point price tag for each level.

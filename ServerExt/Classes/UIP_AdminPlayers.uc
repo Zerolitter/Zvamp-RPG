@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License along
 // with Server Extension. If not, see <https://www.gnu.org/licenses/>.
 
-Class UIP_AdminMenu extends KFGUI_MultiComponent;
+Class UIP_AdminPlayers extends KFGUI_MultiComponent;
 
 var KFGUI_ColumnList PlayersList;
 var KFGUI_Button MotdButton;
@@ -42,6 +42,11 @@ var localized string ColumnTotalExp;
 var localized string ColumnTotalPlayTime;
 var localized string EditMotdButtonText;
 var localized string EditMotdButtonToolTip;
+
+function string TextOrDefault(string Value, string Fallback)
+{
+	return (Value!="" ? Value : Fallback);
+}
 
 function FRowItem newFRowItem(string Text, int Value, bool isSplitter)
 {
@@ -70,30 +75,30 @@ function InitMenu()
 	MotdButton = KFGUI_Button(FindComponentID('MOTD'));
 
 	PlayerContext.ItemRows.AddItem(newFRowItem("",-1,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(ShowDebugInfo,9,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(ShowDebugInfo,"Debug Info"),9,false));
 	PlayerContext.ItemRows.AddItem(newFRowItem("",0,true));
-	PlayerContext.ItemRows.AddItem(newFRowItem(Add1kXP,2,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(Add10kXP,3,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(AdvancePerkLevel,4,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(SetPerkLevel,-1,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(SetPrestigeLevel,-2,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(Add1kXP,"+1,000 XP"),2,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(Add10kXP,"+10,000 XP"),3,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(AdvancePerkLevel,"Advance Level"),4,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(SetPerkLevel,"Set Level"),-1,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(SetPrestigeLevel,"Set Prestige"),-2,false));
 	PlayerContext.ItemRows.AddItem(newFRowItem("",0,true));
-	PlayerContext.ItemRows.AddItem(newFRowItem(UnloadAllStats,5,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(UnloadAllTraits,6,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(UnloadAllStats,"Unload Stats"),5,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(UnloadAllTraits,"Unload Traits"),6,false));
 	PlayerContext.ItemRows.AddItem(newFRowItem("",0,true));
-	PlayerContext.ItemRows.AddItem(newFRowItem(Remove1kXP,7,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(Remove10kXP,8,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(Remove1kXP,"-1,000 XP"),7,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(Remove10kXP,"-10,000 XP"),8,false));
 	PlayerContext.ItemRows.AddItem(newFRowItem("",0,true));
-	PlayerContext.ItemRows.AddItem(newFRowItem(ResetAllStats,0,false));
-	PlayerContext.ItemRows.AddItem(newFRowItem(ResetCurrentPerkStats,1,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(ResetAllStats,"Reset Stats"),0,false));
+	PlayerContext.ItemRows.AddItem(newFRowItem(TextOrDefault(ResetCurrentPerkStats,"Reset Perk Stats"),1,false));
 
-	PlayersList.Columns.AddItem(newFColumnItem(ColumnPlayer,0.55));
-	PlayersList.Columns.AddItem(newFColumnItem(ColumnTotalKills,0.15));
-	PlayersList.Columns.AddItem(newFColumnItem(ColumnTotalExp,0.15));
-	PlayersList.Columns.AddItem(newFColumnItem(ColumnTotalPlayTime,0.15));
+	PlayersList.Columns.AddItem(newFColumnItem(TextOrDefault(ColumnPlayer,"Player"),0.55));
+	PlayersList.Columns.AddItem(newFColumnItem(TextOrDefault(ColumnTotalKills,"Kills"),0.15));
+	PlayersList.Columns.AddItem(newFColumnItem(TextOrDefault(ColumnTotalExp,"XP"),0.15));
+	PlayersList.Columns.AddItem(newFColumnItem(TextOrDefault(ColumnTotalPlayTime,"Play Time"),0.15));
 
-	MotdButton.ButtonText=EditMotdButtonText;
-	MotdButton.Tooltip=EditMotdButtonToolTip;
+	MotdButton.ButtonText=TextOrDefault(EditMotdButtonText,"Edit MOTD");
+	MotdButton.Tooltip=TextOrDefault(EditMotdButtonToolTip,"Edit the server Message of the Day");
 
 	Super.InitMenu();
 }
@@ -120,7 +125,7 @@ function SelectedRow(KFGUI_ListItem Item, int Row, bool bRight, bool bDblClick)
 {
 	if (bRight || bDblClick)
 	{
-		PlayerContext.ItemRows[0].Text = EditPlayer$" "$Item.Columns[0];
+		PlayerContext.ItemRows[0].Text = TextOrDefault(EditPlayer,"EDIT:")$" "$Item.Columns[0];
 		SelectedID = Item.Value;
 		PlayerContext.OpenMenu(Self);
 	}
