@@ -64,13 +64,15 @@ var transient bool bZvampCompatDefaultsApplied;
 
 var SoundCue BonusGameCue;
 var Object BonusGameFXObj;
-var bool bSMLRuntimeActor,bSMLTraderAutoPaused;
+var bool bSMLRuntimeActor,bSMLTraderAutoPaused,bSMLTraderCloseTimerCleared;
+var int SMLTraderPausedRemainingTime;
 
-const SettingsTagVer=17;
+const SettingsTagVer=18;
 var KFGameReplicationInfo KF;
 var config int SettingsInit;
 var config int ForcedMaxPlayers,PlayerRespawnTime,LargeMonsterHP,StatAutoSaveWaves,MinUnloadPerkLevel,PostGameRespawnCost,MaxTopPlayers,DoshThrowAmount,AutoMessageIntervalSeconds,PlayerProgressWaveVoteMax,PlayerProgressWaveVoteSeconds,NextMapChoiceWave,NextMapChoiceSeconds;
-var config float UnloadPerkExpCost,AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue,ZvampextTraderSpeedBoostMultiplier,PlayerProgressWaveVotePct,NextMapChoicePct;
+var config float UnloadPerkExpCost,AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminGrenadeThrowRangeValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue,ZvampextTraderSpeedBoostMultiplier,PlayerProgressWaveVotePct,NextMapChoicePct;
+var config float AdminAmmoBoxCountValue,AdminItemBoxCountValue,AdminPickupRespawnTimeValue,AdminGrenadesFromAmmoValue,AdminAmmoBoxArmorValue;
 var globalconfig string ServerMOTD,StatFileDir;
 var config string AutoMessageText,AutoMessageColor;
 var string ZvampextBuildID;
@@ -78,10 +80,12 @@ var array<Controller> PendingSpawners;
 var int LastWaveNum,NumWaveSwitches,AutoMessageIndex,ProgressWaveVoteTarget,NextMapChoiceWaveNum;
 var ExtSpawnPointHelper SpawnPointer;
 var bool bRespawnCheck,bSpecialSpawn,bGameHasEnded,bIsPostGame,bRevampSpawnsPaused,bProgressWaveVoteActive,bNextMapChoiceActive,bNextMapChoiceOffered;
-var config bool bKillMessages,bDamageMessages,bEnableMapVote,bNoAdminCommands,bNoWebAdmin,bNoBoomstickJumping,bDumpXMLStats,bRagdollFromFall,bRagdollFromMomentum,bRagdollFromBackhit,bAddCountryTags,bThrowAllWeaponsOnDeath,bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader,bZvampextAutoEnableCheats,bZvampextUIOnly,bVampUIEndMatchEnabled,bZvampextAutoPauseTrader,bZvampextTraderSpeedBoost,bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup,bAutoMessageEnabled,bPlayerProgressWaveVoteEnabled,bNextMapChoiceEnabled;
+var config bool bKillMessages,bDamageMessages,bEnableMapVote,bNoAdminCommands,bNoWebAdmin,bNoBoomstickJumping,bDumpXMLStats,bRagdollFromFall,bRagdollFromMomentum,bRagdollFromBackhit,bAddCountryTags,bThrowAllWeaponsOnDeath,bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader,bZvampextAutoEnableCheats,bZvampextUIOnly,bVampUIEndMatchEnabled,bZvampextAutoPauseTrader,bZvampextTraderSpeedBoost,bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminGrenadeThrowRange,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup,bAutoMessageEnabled,bPlayerProgressWaveVoteEnabled,bNextMapChoiceEnabled;
+var config bool bAdminAmmoBoxCount,bAdminItemBoxCount,bAdminPickupRespawnTime,bAdminGrenadesFromAmmo,bAdminAmmoBoxArmor;
 var transient float NextAutoMessageTime;
 var array<ExtPlayerController> ProgressWaveYesVotes,ProgressWaveNoVotes,NextMapYesVotes,NextMapNoVotes;
 var ExtPlayerController ProgressWaveVoteCaller;
+var transient array<KFProj_Grenade> ZvampextTunedGrenades;
 
 var KFGI_Access KFGIA;
 
@@ -328,8 +332,9 @@ function PostBeginPlay()
 	{
 		`log("[Zvamp] UI-only mode enabled; skipping compatibility defaults, pawn replacement, and custom trader item injection.");
 	}
-	if (bSMLRuntimeActor)
+	if (!bZvampextUIOnly)
 		SetTimer(1.f,true,'MaintainSMLTraderFeatures');
+	UpdateGrenadeTuningTimer();
 
 	SpawnPointer = class'ExtSpawnPointHelper'.Static.FindHelper(WorldInfo); // Start init world pathlist.
 
@@ -419,6 +424,7 @@ function PostBeginPlay()
 		{
 			AdminGrenadeDamageValue = 1.f;
 			AdminGrenadeRadiusValue = 1.f;
+			AdminGrenadeThrowRangeValue = 1.f;
 			AdminAmmoPickupValue = 1.f;
 			AdminItemPickupValue = 1.f;
 			AdminArmorPickupValue = 1.f;
@@ -437,6 +443,14 @@ function PostBeginPlay()
 			NextMapChoiceWave = 0;
 			NextMapChoicePct = 0.51;
 			NextMapChoiceSeconds = 20;
+		}
+		if (SettingsInit < 18)
+		{
+			AdminAmmoBoxCountValue = 0.f;
+			AdminItemBoxCountValue = 0.f;
+			AdminPickupRespawnTimeValue = 30.f;
+			AdminGrenadesFromAmmoValue = 1.f;
+			AdminAmmoBoxArmorValue = 0.25f;
 		}
 		SettingsInit = SettingsTagVer;
 		SaveConfig();
@@ -1589,6 +1603,9 @@ final function InitializePerks(ExtPlayerController Other)
 	Other.OnAdminRevampAction = AdminRevampAction;
 	Other.OnAdminSetTraderGuard = AdminSetTraderGuard;
 	Other.OnAdminSetPickupOverrides = AdminSetPickupOverrides;
+	Other.OnAdminSetGrenadeThrowRange = AdminSetGrenadeThrowRange;
+	Other.OnAdminSetGrenadeTuning = AdminSetGrenadeTuning;
+	Other.OnAdminSetResourceLimits = AdminSetResourceLimits;
 		Other.OnAdminFastForwardTrader = AdminFastForwardTrader;
 		Other.OnAdminOpenTrader = AdminOpenTrader;
 		Other.OnPublicOpenTrader = PublicOpenTrader;
@@ -1633,6 +1650,7 @@ final function InitializePerks(ExtPlayerController Other)
 	}
 	PM.ServerInitPerks();
 	PM.InitiateClientRep();
+	PM.ForceZvampextReplicationUpdate();
 	if (PM.ZvampextNeedsReplicationKick())
 		SetTimer(1.f,true,'ZvampextPerkReplicationWatchdog');
 }
@@ -1655,6 +1673,8 @@ final function SendMOTD(ExtPlayerController PC)
 	PC.ClientSetRevampTraderGuard(bRevampTraderGuard,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader);
 	PC.ClientSetVampUIEndMatchEnabled(bVampUIEndMatchEnabled);
 	PC.ClientSetAdminPickupOverrides(bAdminGrenadeDamage,AdminGrenadeDamageValue,bAdminGrenadeRadius,AdminGrenadeRadiusValue,bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+	PC.ClientSetAdminGrenadeThrowRange(bAdminGrenadeThrowRange,AdminGrenadeThrowRangeValue);
+	PC.ClientSetAdminResourceLimits(bAdminAmmoBoxCount,AdminAmmoBoxCountValue,bAdminItemBoxCount,AdminItemBoxCountValue,bAdminPickupRespawnTime,AdminPickupRespawnTimeValue,bAdminGrenadesFromAmmo,AdminGrenadesFromAmmoValue,bAdminAmmoBoxArmor,AdminAmmoBoxArmorValue);
 	PC.ClientRefreshZvampextSettings();
 	ApplyPickupOverridesToController(PC);
 	PC.ApplyPlayerDoshThrowAmount();
@@ -1786,6 +1806,33 @@ function ZvampextPerkReplicationWatchdog()
 		ClearTimer('ZvampextPerkReplicationWatchdog');
 }
 
+final function HoldSMLTraderTimer(string Source)
+{
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI == None || !KFGRI.bTraderIsOpen)
+		return;
+
+	if (!bSMLTraderAutoPaused)
+	{
+		bSMLTraderAutoPaused = true;
+		SMLTraderPausedRemainingTime = Max(KFGRI.RemainingTime, 1);
+		`log("[SMLCompat] trader auto-hold enabled by "$Source$".");
+	}
+	KFGRI.bStopCountDown = true;
+	KFGRI.RemainingTime = Max(SMLTraderPausedRemainingTime, 1);
+	KFGRI.bForceNetUpdate = true;
+	if (KFGI != None && !bSMLTraderCloseTimerCleared)
+	{
+		KFGI.ClearTimer('CloseTraderTimer');
+		bSMLTraderCloseTimerCleared = true;
+		`log("[SMLCompat] trader close timer cleared on GameInfo by "$Source$".");
+	}
+}
+
 function MaintainSMLTraderFeatures()
 {
 	local KFGameReplicationInfo KFGRI;
@@ -1793,21 +1840,14 @@ function MaintainSMLTraderFeatures()
 	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
 	if (KFGRI != None && KFGRI.bTraderIsOpen)
 	{
-		if (bZvampextAutoPauseTrader)
-		{
-			KFGRI.bStopCountDown = true;
-			KFGRI.bForceNetUpdate = true;
-			if (!bSMLTraderAutoPaused)
-			{
-				bSMLTraderAutoPaused = true;
-				`log("[SMLCompat] trader auto-hold enabled.");
-			}
-		}
+		if (bZvampextAutoPauseTrader || bSMLTraderAutoPaused)
+			HoldSMLTraderTimer("mutator monitor");
 		ApplySMLTraderSpeedBoost();
 	}
 	else
 	{
 		bSMLTraderAutoPaused = false;
+		bSMLTraderCloseTimerCleared = false;
 		ClearSMLTraderSpeedBoost();
 	}
 }
@@ -1823,6 +1863,8 @@ function ReleaseSMLTraderPause()
 		KFGRI.bForceNetUpdate = true;
 	}
 	bSMLTraderAutoPaused = false;
+	bSMLTraderCloseTimerCleared = false;
+	SMLTraderPausedRemainingTime = 0;
 }
 
 function ApplySMLTraderSpeedBoost()
@@ -2344,9 +2386,67 @@ function bool CheckReplacement(Actor Other)
 {
 	if (bNoBoomstickJumping && KFWeap_Shotgun_DoubleBarrel(Other)!=None)
 		KFWeap_Shotgun_DoubleBarrel(Other).DoubleBarrelKickMomentum = 5.f;
-	if (bAdminGrenadeRadius && KFProj_Grenade(Other)!=None)
-		KFProj_Grenade(Other).DamageRadius *= AdminGrenadeRadiusValue;
 	return true;
+}
+
+final function UpdateGrenadeTuningTimer()
+{
+	if (bAdminGrenadeRadius || bAdminGrenadeThrowRange)
+	{
+		SetTimer(0.02f,true,'ApplyGrenadeTuningToLiveProjectiles');
+	}
+	else
+	{
+		ClearTimer('ApplyGrenadeTuningToLiveProjectiles');
+		ZvampextTunedGrenades.Length = 0;
+	}
+}
+
+final function ApplyGrenadeTuningToLiveProjectiles()
+{
+	local int i;
+	local float ThrowScale;
+	local KFProj_Grenade GrenadeProj;
+
+	for (i=ZvampextTunedGrenades.Length-1; i>=0; --i)
+	{
+		if (ZvampextTunedGrenades[i] == None || ZvampextTunedGrenades[i].bDeleteMe)
+		{
+			ZvampextTunedGrenades.Remove(i,1);
+		}
+	}
+
+	foreach WorldInfo.DynamicActors(class'KFProj_Grenade',GrenadeProj)
+	{
+		if (GrenadeProj == None || GrenadeProj.bDeleteMe || GrenadeProj.Instigator == None
+			|| ExtPlayerController(GrenadeProj.Instigator.Controller) == None
+			|| ZvampextTunedGrenades.Find(GrenadeProj) != INDEX_NONE)
+		{
+			continue;
+		}
+
+		if (bAdminGrenadeRadius)
+		{
+			GrenadeProj.DamageRadius *= AdminGrenadeRadiusValue;
+		}
+
+		if (bAdminGrenadeThrowRange)
+		{
+			ThrowScale = FMax(AdminGrenadeThrowRangeValue,0.f);
+			GrenadeProj.Speed *= ThrowScale;
+			GrenadeProj.MaxSpeed *= ThrowScale;
+			GrenadeProj.TossZ *= ThrowScale;
+			if (!IsZero(GrenadeProj.Velocity))
+			{
+				GrenadeProj.Velocity *= ThrowScale;
+				GrenadeProj.Speed = VSize(GrenadeProj.Velocity);
+			}
+			GrenadeProj.SetPhysics(PHYS_Falling);
+			`log("[Zvamp] grenade throw tuning applied player="$GrenadeProj.Instigator.PlayerReplicationInfo.PlayerName$" class="$GrenadeProj.Class$" scale="$ThrowScale$" radius="$GrenadeProj.DamageRadius);
+		}
+
+		ZvampextTunedGrenades.AddItem(GrenadeProj);
+	}
 }
 
 final function bool IsAdminGrenadeDamage(class<DamageType> DamageType, Actor DamageCauser)
@@ -2365,8 +2465,51 @@ final function ApplyPickupOverridesTo(Pawn Other)
 	if (IM!=None)
 	{
 		IM.SetAdminPickupOverrides(bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+		IM.SetAdminResourcePickupOverrides(bAdminGrenadesFromAmmo,AdminGrenadesFromAmmoValue,bAdminAmmoBoxArmor,AdminAmmoBoxArmorValue);
 		IM.SetDoshThrowAmount(DoshThrowAmount);
 	}
+}
+
+function ModifyPickupFactories()
+{
+	Super.ModifyPickupFactories();
+	ApplyResourcePickupFactoryCounts(false);
+}
+
+function ModifyActivatedPickupFactory(PickupFactory out_ActivatedFactory, out float out_RespawnDelay)
+{
+	Super.ModifyActivatedPickupFactory(out_ActivatedFactory,out_RespawnDelay);
+	if (bAdminPickupRespawnTime && KFPickupFactory(out_ActivatedFactory) != None)
+	{
+		out_RespawnDelay = FMax(AdminPickupRespawnTimeValue,1.f);
+	}
+}
+
+final function ApplyResourcePickupFactoryCounts(bool bResetPickups)
+{
+	local KFGameInfo KFGI;
+	local int AmmoCount, ItemCount;
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	if (KFGI == None || KFGI.DifficultyInfo == None)
+	{
+		return;
+	}
+
+	AmmoCount = bAdminAmmoBoxCount
+		? Clamp(Round(AdminAmmoBoxCountValue),0,KFGI.AmmoPickups.Length)
+		: Clamp(Round(float(KFGI.AmmoPickups.Length) * KFGI.DifficultyInfo.GetAmmoPickupModifier()),0,KFGI.AmmoPickups.Length);
+	ItemCount = bAdminItemBoxCount
+		? Clamp(Round(AdminItemBoxCountValue),0,KFGI.ItemPickups.Length)
+		: Clamp(Round(float(KFGI.ItemPickups.Length) * KFGI.DifficultyInfo.GetItemPickupModifier()),0,KFGI.ItemPickups.Length);
+
+	KFGI.NumAmmoPickups = AmmoCount;
+	KFGI.NumWeaponPickups = ItemCount;
+	if (bResetPickups)
+	{
+		KFGI.ResetAllPickups();
+	}
+	`log("[Zvamp] Resource limits applied ammoBoxes="$AmmoCount$"/"$KFGI.AmmoPickups.Length@"itemBoxes="$ItemCount$"/"$KFGI.ItemPickups.Length@"reset="$bResetPickups);
 }
 
 final function ApplyPickupOverridesToController(ExtPlayerController PC)
@@ -2924,13 +3067,13 @@ function FinishNextMapChoiceVote(optional bool bNextMap)
 
 function AdminProgressWave(ExtPlayerController PC, int WaveCount)
 {
-	ExecuteProgressWave(PC,WaveCount,true);
+	ExecuteProgressWave(PC,WaveCount,true,"ProgressWave");
 }
 
-function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequireAdmin)
+function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequireAdmin, optional string SourceLabel)
 {
 	local KFGameInfo KFGI;
-	local KFGameInfo_Endless EndlessGI;
+	local KFGameInfo_Survival SurvivalGI;
 	local KFGameReplicationInfo KFGRI;
 	local KFAISpawnManager SpawnManager;
 	local KFPawn_Monster Zed;
@@ -2940,6 +3083,9 @@ function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequir
 	local int Damaged;
 	local int Removed;
 	local int TargetWave;
+
+	if (SourceLabel == "")
+		SourceLabel = "ProgressWave";
 
 	if (PC==None)
 		return;
@@ -2953,15 +3099,15 @@ function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequir
 	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
 	if (KFGI == None || KFGRI == None)
 	{
-		PC.ClientMessage("ProgressWave failed: game state unavailable.",'Priority');
+		PC.ClientMessage(SourceLabel$" failed: game state unavailable.",'Priority');
 		return;
 	}
 
 	ZGI = Zvampext_Endless(KFGI);
-	EndlessGI = KFGameInfo_Endless(KFGI);
-	if (EndlessGI == None)
+	SurvivalGI = KFGameInfo_Survival(KFGI);
+	if (SurvivalGI == None)
 	{
-		PC.ClientMessage("ProgressWave failed: Endless game state unavailable.",'Priority');
+		PC.ClientMessage(SourceLabel$" failed: Survival-style game state unavailable.",'Priority');
 		return;
 	}
 	WaveCount = Clamp(WaveCount, 1, 100);
@@ -2999,9 +3145,9 @@ function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequir
 	{
 		ZGI.WaveNum = TargetWave;
 	}
-	else if (EndlessGI != None)
+	else if (SurvivalGI != None)
 	{
-		EndlessGI.WaveNum = TargetWave;
+		SurvivalGI.WaveNum = TargetWave;
 	}
 	KFGRI.WaveNum = TargetWave;
 	KFGRI.AIRemaining = 0;
@@ -3016,9 +3162,9 @@ function ExecuteProgressWave(ExtPlayerController PC, int WaveCount, bool bRequir
 		ReleaseSMLTraderPause();
 	}
 
-	EndlessGI.WaveEnded(WEC_WaveWon);
-	`log("[Zvamp] ProgressWave advanced from "$OldWave$" to "$NewWave$"; damaged="$Damaged@"removed="$Removed);
-	PC.ClientMessage("ProgressWave advanced from "$OldWave$" to "$NewWave$" and opened trader through wave-end flow. Removed "$Removed$" leftover zeds.",'Priority');
+	SurvivalGI.WaveEnded(WEC_WaveWon);
+	`log("[Zvamp] "$SourceLabel$" advanced from "$OldWave$" to "$NewWave$"; damaged="$Damaged@"removed="$Removed);
+	PC.ClientMessage(SourceLabel$" advanced from "$OldWave$" to "$NewWave$" and opened trader through wave-end flow. Removed "$Removed$" leftover zeds.",'Priority');
 }
 
 function RefreshNewItemsFor(ExtPlayerController PC)
@@ -3135,8 +3281,7 @@ function AdminRevampAction(ExtPlayerController PC, int Action)
 	local KFGameReplicationInfo KFGRI;
 	local KFPawn_Monster Zed;
 	local KFAISpawnManager SpawnManager;
-	local Zvampext_Endless ZvampextGI;
-	local int Count, DiagWave, DiagRemaining;
+	local int Count;
 	local int i, DifficultyIndex, PlayerIndex, LivingPlayers, NewMaxMonsters, ZedSpawnerLimit;
 	local float SpawnMod;
 	local Controller C;
@@ -3192,66 +3337,7 @@ function AdminRevampAction(ExtPlayerController PC, int Action)
 		PC.ClientMessage("Damaged "$Count$" active zeds.",'Priority');
 		break;
 	case 18: // End wave.
-		KFGI = KFGameInfo(WorldInfo.Game);
-		KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
-		SpawnManager = (KFGI!=None) ? KFGI.SpawnManager : None;
-		DiagWave = -1;
-		DiagRemaining = -1;
-		if (KFGRI!=None)
-		{
-			DiagWave = KFGRI.WaveNum;
-			DiagRemaining = KFGRI.AIRemaining;
-		}
-		if (KFGI!=None && SpawnManager!=None)
-		{
-			`log("[ZvampDiag] endwave before damage Wave="$DiagWave
-				@"AIAlive="$KFGI.AIAliveCount
-				@"AIRemaining="$DiagRemaining
-				@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
-				@"WaveTotalAI="$SpawnManager.WaveTotalAI);
-		}
-		foreach WorldInfo.AllPawns(class'KFPawn_Monster',Zed)
-		{
-			if (Zed!=None && Zed.IsAliveAndWell() && PlayerController(Zed.Controller)==None)
-			{
-				if (AdminKillZed(PC,Zed))
-					++Count;
-			}
-		}
-		if (KFGI!=None && SpawnManager!=None)
-		{
-			if (KFGRI!=None)
-			{
-				DiagWave = KFGRI.WaveNum;
-				DiagRemaining = KFGRI.AIRemaining;
-			}
-			`log("[ZvampDiag] endwave after damage Wave="$DiagWave
-				@"AIAlive="$KFGI.AIAliveCount
-				@"AIRemaining="$DiagRemaining
-				@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
-				@"WaveTotalAI="$SpawnManager.WaveTotalAI
-				@"Damaged="$Count);
-			if (Count == 0 && KFGI.AIAliveCount <= 1 && DiagRemaining <= 1)
-			{
-				`log("[ZvampDiag] endwave clearing orphaned zed counter Wave="$DiagWave
-					@"AIAlive="$KFGI.AIAliveCount
-					@"AIRemaining="$DiagRemaining
-					@"NumAISpawnsQueued="$KFGI.NumAISpawnsQueued
-					@"WaveTotalAI="$SpawnManager.WaveTotalAI);
-				KFGI.AIAliveCount = 0;
-				if (KFGRI!=None)
-				{
-					KFGRI.AIRemaining = 0;
-					KFGRI.bForceNetUpdate = true;
-				}
-				ZvampextGI = Zvampext_Endless(KFGI);
-				if (ZvampextGI != None)
-				{
-					ZvampextGI.ClearZvampextOrphanedWaveCounter("admin endwave", KFGI.NumAISpawnsQueued);
-				}
-			}
-		}
-		PC.ClientMessage("Endwave damaged "$Count$" active zeds.",'Priority');
+		ExecuteProgressWave(PC,1,true,"EndWave");
 		break;
 	case 19: // Pause or resume spawning.
 		KFGI = KFGameInfo(WorldInfo.Game);
@@ -3334,8 +3420,7 @@ function AdminRevampAction(ExtPlayerController PC, int Action)
 			PC.ClientMessage("Trader is not open.",'Priority');
 			break;
 		}
-		KFGRI.bStopCountDown = true;
-		KFGRI.bForceNetUpdate = true;
+		HoldSMLTraderTimer("admin pause");
 		PC.ClientMessage("Trader timer paused. Players can still vote/skip trader normally.",'Priority');
 		break;
 	default:
@@ -3364,6 +3449,11 @@ function AdminSetTraderGuard(ExtPlayerController PC, bool bEnabled, bool bBlockS
 	PC.ClientMessage("TraderGuard settings updated.",'Priority');
 }
 
+final function string ZvampAdminSettingText(string Label, bool bEnabled, float Value)
+{
+	return Label$"="$(bEnabled ? string(Value) : "off");
+}
+
 function AdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue)
 {
 	local ExtPlayerController E;
@@ -3385,6 +3475,7 @@ function AdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, fl
 	bAdminArmorPickup = bArmorPickup;
 	AdminArmorPickupValue = FMax(ArmorPickupValue,0.f);
 	SaveConfig();
+	UpdateGrenadeTuningTimer();
 
 	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
 	{
@@ -3394,6 +3485,89 @@ function AdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, fl
 	}
 
 	PC.ClientMessage("Pickup and grenade override settings updated.",'Priority');
+}
+
+function AdminSetGrenadeTuning(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bThrowRange, float ThrowRangeValue)
+{
+	local ExtPlayerController E;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bAdminGrenadeDamage = bGrenadeDamage;
+	AdminGrenadeDamageValue = FMax(GrenadeDamageValue,0.f);
+	bAdminGrenadeRadius = bGrenadeRadius;
+	AdminGrenadeRadiusValue = FMax(GrenadeRadiusValue,0.f);
+	bAdminGrenadeThrowRange = bThrowRange;
+	AdminGrenadeThrowRangeValue = FMax(ThrowRangeValue,0.f);
+	SaveConfig();
+	UpdateGrenadeTuningTimer();
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+	{
+		E.ClientSetAdminPickupOverrides(bAdminGrenadeDamage,AdminGrenadeDamageValue,bAdminGrenadeRadius,AdminGrenadeRadiusValue,bAdminAmmoPickup,AdminAmmoPickupValue,bAdminItemPickup,AdminItemPickupValue,bAdminArmorPickup,AdminArmorPickupValue);
+		E.ClientSetAdminGrenadeThrowRange(bAdminGrenadeThrowRange,AdminGrenadeThrowRangeValue);
+	}
+
+	PC.ClientMessage("Grenade tuning applied: "$ZvampAdminSettingText("Damage",bAdminGrenadeDamage,AdminGrenadeDamageValue)$", "$ZvampAdminSettingText("Radius",bAdminGrenadeRadius,AdminGrenadeRadiusValue)$", "$ZvampAdminSettingText("Throw Range",bAdminGrenadeThrowRange,AdminGrenadeThrowRangeValue), 'Priority');
+}
+
+function AdminSetGrenadeThrowRange(ExtPlayerController PC, bool bThrowRange, float ThrowRangeValue)
+{
+	local ExtPlayerController E;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bAdminGrenadeThrowRange = bThrowRange;
+	AdminGrenadeThrowRangeValue = FMax(ThrowRangeValue,0.f);
+	SaveConfig();
+	UpdateGrenadeTuningTimer();
+
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+	{
+		E.ClientSetAdminGrenadeThrowRange(bAdminGrenadeThrowRange,AdminGrenadeThrowRangeValue);
+	}
+
+	PC.ClientMessage("Grenade throw range settings updated.",'Priority');
+}
+
+function AdminSetResourceLimits(ExtPlayerController PC, bool bAmmoBoxCount, float AmmoBoxCountValue, bool bItemBoxCount, float ItemBoxCountValue, bool bPickupRespawnTime, float PickupRespawnTimeValue, bool bGrenadesFromAmmo, float GrenadesFromAmmoValue, bool bAmmoBoxArmor, float AmmoBoxArmorValue)
+{
+	local ExtPlayerController E;
+
+	if (!HasPrivs(ExtPlayerReplicationInfo(PC.PlayerReplicationInfo)))
+	{
+		PC.ClientMessage("You do not have enough admin priveleges.",'Priority');
+		return;
+	}
+
+	bAdminAmmoBoxCount = bAmmoBoxCount;
+	AdminAmmoBoxCountValue = FMax(AmmoBoxCountValue,0.f);
+	bAdminItemBoxCount = bItemBoxCount;
+	AdminItemBoxCountValue = FMax(ItemBoxCountValue,0.f);
+	bAdminPickupRespawnTime = bPickupRespawnTime;
+	AdminPickupRespawnTimeValue = FMax(PickupRespawnTimeValue,1.f);
+	bAdminGrenadesFromAmmo = bGrenadesFromAmmo;
+	AdminGrenadesFromAmmoValue = FMax(GrenadesFromAmmoValue,0.f);
+	bAdminAmmoBoxArmor = bAmmoBoxArmor;
+	AdminAmmoBoxArmorValue = FMax(AmmoBoxArmorValue,0.f);
+	SaveConfig();
+
+	ApplyResourcePickupFactoryCounts(true);
+	foreach WorldInfo.AllControllers(class'ExtPlayerController',E)
+	{
+		E.ClientSetAdminResourceLimits(bAdminAmmoBoxCount,AdminAmmoBoxCountValue,bAdminItemBoxCount,AdminItemBoxCountValue,bAdminPickupRespawnTime,AdminPickupRespawnTimeValue,bAdminGrenadesFromAmmo,AdminGrenadesFromAmmoValue,bAdminAmmoBoxArmor,AdminAmmoBoxArmorValue);
+		ApplyPickupOverridesToController(E);
+	}
+
+	PC.ClientMessage("Resource limits applied: "$ZvampAdminSettingText("Ammo Boxes",bAdminAmmoBoxCount,AdminAmmoBoxCountValue)$", "$ZvampAdminSettingText("Weapons / Items",bAdminItemBoxCount,AdminItemBoxCountValue)$", "$ZvampAdminSettingText("Respawn Seconds",bAdminPickupRespawnTime,AdminPickupRespawnTimeValue)$", "$ZvampAdminSettingText("Grenades / Ammo Box",bAdminGrenadesFromAmmo,AdminGrenadesFromAmmoValue)$", "$ZvampAdminSettingText("Armor / Ammo Box",bAdminAmmoBoxArmor,AdminAmmoBoxArmorValue), 'Priority');
 }
 
 function PlayerChangeSpec(ExtPlayerController PC, bool bSpectator)
@@ -3718,7 +3892,7 @@ function WebAdminSetValue(name PropName, int ElementIndex, string Value)
 defaultproperties
 {
 	GroupNames.Add("Zvampext")
-	ZvampextBuildID="ServerExtMut 2026-05-19 mapvote-player-progress-vote-chat"
+	ZvampextBuildID="ServerExtMut V2.1.0 2026-05-22 public-release"
 
 	// Main devs
 	DevList.Add("0x0110000100E8984E") // Marco

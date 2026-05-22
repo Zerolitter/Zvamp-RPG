@@ -124,34 +124,38 @@ function DrawMenu()
 {
 	local ExtPlayerController PC;
 	local int PendingAmount;
-	local float BarX,BarY,BarW,BarH,FillW,PendingFillW,TS,XL,YL,ProgressValue,PendingProgressValue,MaxProgressValue,VisibleProgressPercent;
+	local float BarX,BarY,BarW,BarH,FillW,PendingFillW,TS,XL,YL,ProgressValue,PendingProgressValue,MaxProgressValue,VisibleProgressPercent,NameX;
 	local string NameText,ValueText;
 
 	if (MyPerk==None || StatIndex>=MyPerk.PerkStats.Length)
 		return;
 
-	BarX = CompPos[2]*0.40f;
-	BarY = CompPos[3]*0.24f;
-	BarW = CompPos[2]*0.58f;
-	BarH = CompPos[3]*0.52f;
+	BarX = CompPos[2]*0.36f;
+	BarY = CompPos[3]*0.30f;
+	BarW = CompPos[2]*0.61f;
+	BarH = CompPos[3]*0.42f;
+	NameX = CompPos[2]*0.025f;
 	NameText = GetShortStatName(MyPerk.PerkStats[StatIndex].StatType);
 
 	Canvas.SetPos(0.f,0.f);
-	Canvas.SetDrawColor(7,5,12,255);
+	Canvas.SetDrawColor(12,14,19,245);
 	Owner.CurrentStyle.DrawWhiteBox(CompPos[2],CompPos[3]);
+	Canvas.SetDrawColor(34,38,46,210);
+	Canvas.SetPos(0.f,CompPos[3]-1.f);
+	Owner.CurrentStyle.DrawWhiteBox(CompPos[2],1.f);
 
 	Canvas.Font = Owner.CurrentStyle.PickFont(Owner.CurrentStyle.DefaultFontSize,TS);
 	Canvas.TextSize(NameText,XL,YL,TS,TS);
-	Canvas.SetPos(5.f,(CompPos[3]-YL)*0.5f);
-	Canvas.SetDrawColor(245,245,245,255);
+	Canvas.SetPos(NameX,(CompPos[3]-YL)*0.5f);
+	Canvas.SetDrawColor(246,242,230,255);
 	Canvas.DrawText(NameText,,TS,TS);
 
 	Canvas.SetPos(BarX,BarY);
-	Canvas.SetDrawColor(72,68,86,255);
+	Canvas.SetDrawColor(66,68,78,255);
 	Owner.CurrentStyle.DrawWhiteBox(BarW,BarH);
-	Canvas.SetPos(BarX+4.f,BarY+4.f);
-	Canvas.SetDrawColor(18,16,26,255);
-	Owner.CurrentStyle.DrawWhiteBox(BarW-8.f,BarH-8.f);
+	Canvas.SetPos(BarX+3.f,BarY+3.f);
+	Canvas.SetDrawColor(18,19,25,255);
+	Owner.CurrentStyle.DrawWhiteBox(BarW-6.f,BarH-6.f);
 
 	ProgressValue = MyPerk.PerkStats[StatIndex].CurrentValue * MyPerk.PerkStats[StatIndex].Progress;
 	PC = ExtPlayerController(GetPlayer());
@@ -162,31 +166,31 @@ function DrawMenu()
 	if (MaxProgressValue>0.f)
 	{
 		VisibleProgressPercent = FClamp(PendingProgressValue / MaxProgressValue,0.f,1.f) * 100.f;
-		FillW = FClamp(ProgressValue / MaxProgressValue,0.f,1.f) * (BarW-8.f);
-		PendingFillW = FClamp(PendingProgressValue / MaxProgressValue,0.f,1.f) * (BarW-8.f);
+		FillW = FClamp(ProgressValue / MaxProgressValue,0.f,1.f) * (BarW-6.f);
+		PendingFillW = FClamp(PendingProgressValue / MaxProgressValue,0.f,1.f) * (BarW-6.f);
 	}
 	else FillW = 0.f;
 	if (PendingFillW>FillW)
 	{
-		Canvas.SetPos(BarX+4.f+FillW,BarY+4.f);
-		Canvas.SetDrawColor(150,98,220,210);
-		Owner.CurrentStyle.DrawWhiteBox(PendingFillW-FillW,BarH-8.f);
+		Canvas.SetPos(BarX+3.f+FillW,BarY+3.f);
+		Canvas.SetDrawColor(225,145,42,220);
+		Owner.CurrentStyle.DrawWhiteBox(PendingFillW-FillW,BarH-6.f);
 	}
 	if (FillW>0.f)
 	{
-		Canvas.SetPos(BarX+4.f,BarY+4.f);
-		Canvas.SetDrawColor(34,205,92,255);
-		Owner.CurrentStyle.DrawWhiteBox(FillW,BarH-8.f);
+		Canvas.SetPos(BarX+3.f,BarY+3.f);
+		Canvas.SetDrawColor(76,196,112,255);
+		Owner.CurrentStyle.DrawWhiteBox(FillW,BarH-6.f);
 	}
 
 	ValueText = ChopExtraDigits(VisibleProgressPercent)$"%";
 	Canvas.Font = Owner.CurrentStyle.PickFont(Max(Owner.CurrentStyle.DefaultFontSize-2,0),TS);
 	Canvas.TextSize(ValueText,XL,YL,TS,TS);
 	Canvas.SetPos(BarX+FMax((BarW-XL)*0.5,2.f),(CompPos[3]-YL)*0.5f);
-	Canvas.SetDrawColor(215,210,225,255);
+	Canvas.SetDrawColor(236,232,222,255);
 	Canvas.DrawText(ValueText,,TS,TS);
 
-	CostButton.SetPosition(0.32,0.05,0.095,0.90);
+	CostButton.SetPosition(0.250,0.16,0.085,0.68);
 	CostButton.ChangeToolTip(GetStatToolTip(MyPerk.PerkStats[StatIndex].StatType, ProgressValue, PendingProgressValue, MaxProgressValue, PendingAmount));
 	if (StatTitleHotspot != None)
 		StatTitleHotspot.ChangeToolTip(GetStatToolTip(MyPerk.PerkStats[StatIndex].StatType, ProgressValue, PendingProgressValue, MaxProgressValue, PendingAmount));

@@ -84,9 +84,9 @@ function InitMenu()
 	BroadcastButton.ButtonText = "Broadcast MOTD";
 	SaveStatsButton.ButtonText = "Save Stats";
 	ResourceLimitsButton.ButtonText = "Resource Limits";
-	ResourceLimitsButton.Tooltip = "Open pickup and grenade override controls";
-	RestrictionPlaceholder1Button.ButtonText = "Placeholder";
-	RestrictionPlaceholder1Button.Tooltip = "Reserved for a future restriction module";
+	ResourceLimitsButton.Tooltip = "Open ammo box, item pickup, respawn, grenade pickup, and armor pickup controls";
+	RestrictionPlaceholder1Button.ButtonText = "Grenade Tuning";
+	RestrictionPlaceholder1Button.Tooltip = "Open grenade damage and radius controls";
 	RestrictionPlaceholder2Button.ButtonText = "Placeholder";
 	RestrictionPlaceholder2Button.Tooltip = "Reserved for a future restriction module";
 
@@ -174,6 +174,9 @@ function ButtonClicked(KFGUI_Button Sender)
 		break;
 	case 'ResourceLimits':
 		Owner.OpenMenu(class'UI_AdminResourceLimits');
+		break;
+	case 'RestrictionPlaceholder1':
+		Owner.OpenMenu(class'UI_AdminGrenadeTuning');
 		break;
 	}
 }

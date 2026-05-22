@@ -21,9 +21,9 @@ class ExtInventoryManager extends KFInventoryManager;
 // Dosh spamming barrier.
 var transient float MoneyTossTime;
 var transient byte MoneyTossCount;
-var bool bOverrideAmmoPickup,bOverrideItemPickup,bOverrideArmorPickup;
+var bool bOverrideAmmoPickup,bOverrideItemPickup,bOverrideArmorPickup,bOverrideGrenadePickup,bAmmoPickupGivesArmor;
 var int DoshThrowAmount;
-var float AmmoPickupValue,ItemPickupValue,ArmorPickupValue;
+var float AmmoPickupValue,ItemPickupValue,ArmorPickupValue,GrenadePickupValue,AmmoPickupArmorValue;
 
 reliable server function ServerThrowMoney()
 {
@@ -80,6 +80,14 @@ function SetAdminPickupOverrides(bool bAmmoPickup, float NewAmmoPickupValue, boo
 	ArmorPickupValue = FMax(NewArmorPickupValue,0.f);
 }
 
+function SetAdminResourcePickupOverrides(bool bGrenadePickup, float NewGrenadePickupValue, bool bArmorFromAmmo, float NewAmmoPickupArmorValue)
+{
+	bOverrideGrenadePickup = bGrenadePickup;
+	GrenadePickupValue = FMax(NewGrenadePickupValue,0.f);
+	bAmmoPickupGivesArmor = bArmorFromAmmo;
+	AmmoPickupArmorValue = FMax(NewAmmoPickupArmorValue,0.f);
+}
+
 function SetDoshThrowAmount(int NewDoshThrowAmount)
 {
 	DoshThrowAmount = Clamp(NewDoshThrowAmount, 1, 1000000);
@@ -109,8 +117,9 @@ function bool GiveWeaponsAmmo(bool bIncludeGrenades)
 	local KFWeapon W;
 	local bool bAddedAmmo;
 	local int GrenadeAmount;
+	local KFPawn_Human KFPH;
 
-	if (!bOverrideAmmoPickup)
+	if (!bOverrideAmmoPickup && !bOverrideGrenadePickup && !bAmmoPickupGivesArmor)
 		return Super.GiveWeaponsAmmo(bIncludeGrenades);
 
 	foreach InventoryActors(class'KFWeapon', W)
@@ -121,9 +130,19 @@ function bool GiveWeaponsAmmo(bool bIncludeGrenades)
 
 	if (bIncludeGrenades)
 	{
-		GrenadeAmount = Max(Round(AmmoPickupValue),1);
+		GrenadeAmount = bOverrideGrenadePickup ? Max(Round(GrenadePickupValue),1) : 1;
 		if (AddGrenades(GrenadeAmount))
 			bAddedAmmo = true;
+	}
+
+	if (bAmmoPickupGivesArmor)
+	{
+		KFPH = KFPawn_Human(Instigator);
+		if (KFPH != None && KFPH.Armor != KFPH.GetMaxArmor())
+		{
+			KFPH.AddArmor(Max(Round(float(KFPH.GetMaxArmor()) * AmmoPickupArmorValue),1));
+			bAddedAmmo = true;
+		}
 	}
 
 	if (bAddedAmmo)

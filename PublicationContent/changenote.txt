@@ -1,13 +1,9 @@
-[h1]V2.0.6[/h1]
+Zvampext RPG V2.1.0 public release.
 
 [list]
-[*]Reworked the Zvampext admin settings dashboard into grouped modules for [b]Restrictions[/b], [b]Trader[/b], [b]Server[/b], [b]Tools[/b], and [b]Wave[/b].
-[*]Added a [b]Resource Limits[/b] popup for grenade and pickup override controls.
-[*]Moved grenade damage, grenade radius, ammo pickup, item pickup, and armor pickup controls out of the main dashboard into the new popup for cleaner spacing.
-[*]Improved admin dashboard button sizing and alignment across Server, Tools, Trader, and Wave controls.
-[*]Added a shared admin debug grid button for layout tuning across the V2 UI.
-[*]Improved the V2 admin dashboard visual framing and module borders.
-[*]Added admin dashboard access for recurring auto messages.
-[*]Added admin dashboard access for MOTD editing and broadcasting.
-[*]Added admin dashboard controls for trader pause, public trader opening, wave jump, end wave, spawn pause, max monster tuning, spawn speed tuning, God, ImRich, and save stats.
+[*]Fixed lobby and in-game perk replication readiness so perks and traits recover cleanly after joining.
+[*]Fixed spawned Perk UI loading states and added server title branding with Zvamp presents header text.
+[*]Fixed trader purchases using invalid upgrade level 255 when buying base weapons.
+[*]Improved ServerExtMut and SML initialization replication kicks for fresh joins and ready-to-spawn flow.
+[*]Kept this upload limited to the Zvampext ServerExt and ServerExtMut packages.
 [/list]

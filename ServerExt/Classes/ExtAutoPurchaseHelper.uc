@@ -276,6 +276,16 @@ final function class<KFWeaponDefinition> ResolveWeaponDefForWeapon(KFWeapon KFW)
 		{
 			return WeaponDef;
 		}
+
+		if (PackageName ~= "KFGameContent")
+		{
+			DefPath = "KFGame.KFWeapDef_" $ Suffix;
+			WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+			if (WeaponDef != None && PathName(KFW.Class) ~= WeaponDef.default.WeaponClassPath)
+			{
+				return WeaponDef;
+			}
+		}
 	}
 
 	DefPath = PackageName $ "." $ Repl(ClassName, "KFWeap", "KFWeapDef");
@@ -285,11 +295,28 @@ final function class<KFWeaponDefinition> ResolveWeaponDefForWeapon(KFWeapon KFW)
 		return WeaponDef;
 	}
 
+	if (PackageName ~= "KFGameContent")
+	{
+		DefPath = "KFGame." $ Repl(ClassName, "KFWeap", "KFWeapDef");
+		WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+		if (WeaponDef != None && PathName(KFW.Class) ~= WeaponDef.default.WeaponClassPath)
+		{
+			return WeaponDef;
+		}
+	}
+
+	if (PathName(KFW.Class) ~= class'ExtWeapDef_9mm'.default.WeaponClassPath)
+	{
+		return class'ExtWeapDef_9mm';
+	}
+
 	return None;
 }
 
 function InitializeOwnedItemList()
 {
+	local Inventory Inv;
+	local KFWeapon KFW;
 	local KFPawn_Human KFP;
 	local Ext_PerkBase EP;
 	local class<KFWeaponDefinition> SafeGrenadeDef;
@@ -347,7 +374,16 @@ function InitializeOwnedItemList()
 	}
 	GrenadeItem.DefaultItem.AssociatedPerkClasses[0] = SafePerkClass;
 
-	`log("[Zvampext] ExtAutoPurchaseHelper initialized generic trader items: owned=0 armorDef="$ArmorItem.DefaultItem.WeaponDef$" grenadeDef="$GrenadeItem.DefaultItem.WeaponDef$" perk="$SafePerkClass);
+	for (Inv = MyKFIM.InventoryChain; Inv != None; Inv = Inv.Inventory)
+	{
+		KFW = KFWeapon(Inv);
+		if (KFW != None)
+		{
+			SetWeaponInformation(KFW);
+		}
+	}
+
+	`log("[Zvampext] ExtAutoPurchaseHelper initialized generic trader items: owned="$OwnedItemList.Length$" armorDef="$ArmorItem.DefaultItem.WeaponDef$" grenadeDef="$GrenadeItem.DefaultItem.WeaponDef$" perk="$SafePerkClass);
 }
 
 simulated function int GetAdjustedSellPriceFor(const out STraderItem ShopItem)
@@ -357,14 +393,95 @@ simulated function int GetAdjustedSellPriceFor(const out STraderItem ShopItem)
 		return Max(1, ShopItem.WeaponDef.default.BuyPrice / 2);
 	}
 
+	if (ShopItem.WeaponDef == class'ExtWeapDef_9mm' || ShopItem.WeaponDef == class'KFWeapDef_9mm')
+	{
+		return Max(1, ShopItem.WeaponDef.default.UpgradeSellPrice[0]);
+	}
+
 	return Super.GetAdjustedSellPriceFor(ShopItem);
+}
+
+function SellWeapon(SItemInformation ItemInfo, optional int SelectedItemIndex = -1)
+{
+	if (!ItemInfo.bIsSecondaryAmmo && ItemInfo.DefaultItem.ClassName != '')
+	{
+		AddDosh(GetAdjustedSellPriceFor(ItemInfo.DefaultItem));
+		AddBlocks(-MyKFIM.GetDisplayedBlocksRequiredFor(ItemInfo.DefaultItem));
+		ZvampextServerSellTraderWeaponByClass(ItemInfo.DefaultItem.ClassName);
+
+		if (SelectedItemIndex != INDEX_NONE)
+		{
+			RemoveOwnedItemListEntryOnly(SelectedItemIndex);
+		}
+		return;
+	}
+
+	Super.SellWeapon(ItemInfo, SelectedItemIndex);
+}
+
+final simulated function int FindSaleItemIndexByClass(name ClassName)
+{
+	local int i;
+
+	if (TraderItems == None || ClassName == '')
+	{
+		return INDEX_NONE;
+	}
+
+	for (i = 0; i < TraderItems.SaleItems.Length; ++i)
+	{
+		if (TraderItems.SaleItems[i].ClassName == ClassName
+			|| TraderItems.SaleItems[i].SingleClassName == ClassName
+			|| TraderItems.SaleItems[i].DualClassName == ClassName)
+		{
+			return i;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+final function RemoveOwnedItemListEntryOnly(int OwnedListIdx)
+{
+	if (OwnedListIdx < 0 || OwnedListIdx >= OwnedItemList.Length)
+	{
+		return;
+	}
+
+	if (OwnedItemList[OwnedListIdx].bIsSecondaryAmmo)
+	{
+		OwnedItemList.Remove(OwnedListIdx, 1);
+		if (OwnedListIdx - 1 >= 0)
+		{
+			OwnedItemList.Remove(OwnedListIdx - 1, 1);
+		}
+	}
+	else if (OwnedItemList[OwnedListIdx].DefaultItem.WeaponDef != None
+		&& OwnedItemList[OwnedListIdx].DefaultItem.WeaponDef.static.UsesSecondaryAmmo())
+	{
+		if (OwnedListIdx + 1 < OwnedItemList.Length)
+		{
+			OwnedItemList.Remove(OwnedListIdx + 1, 1);
+		}
+		OwnedItemList.Remove(OwnedListIdx, 1);
+	}
+	else
+	{
+		OwnedItemList.Remove(OwnedListIdx, 1);
+	}
 }
 
 function SetWeaponInformation(KFWeapon KFW)
 {
 	local int i;
+	local STraderItem FallbackItem;
 
 	if (KFW == None || TraderItems == None)
+	{
+		return;
+	}
+
+	if (ClassIsChildOf(KFW.Class, class'KFWeap_Edged_Knife'))
 	{
 		return;
 	}
@@ -377,6 +494,67 @@ function SetWeaponInformation(KFWeapon KFW)
 			return;
 		}
 	}
+
+	if (BuildOwnedFallbackTraderItem(KFW, FallbackItem))
+	{
+		SetWeaponInfo(KFW, FallbackItem);
+		`log("[Zvampext] sellable fallback item added for held weapon class="$PathName(KFW.Class)@"def="$FallbackItem.WeaponDef);
+	}
+}
+
+final function bool BuildOwnedFallbackTraderItem(KFWeapon KFW, out STraderItem NewItem)
+{
+	local class<KFWeaponDefinition> WeaponDef;
+	local class<KFWeap_DualBase> DualClass;
+	local array<STraderItemWeaponStats> WeaponStats;
+
+	if (KFW == None)
+	{
+		return false;
+	}
+
+	WeaponDef = ResolveWeaponDefForWeapon(KFW);
+	if (WeaponDef == None)
+	{
+		return false;
+	}
+
+	NewItem.WeaponDef = WeaponDef;
+	NewItem.ClassName = KFW.Class.Name;
+
+	DualClass = class<KFWeap_DualBase>(KFW.Class);
+	if (DualClass != None && DualClass.default.SingleClass != None)
+	{
+		NewItem.SingleClassName = DualClass.default.SingleClass.Name;
+	}
+	else
+	{
+		NewItem.SingleClassName = KFW.Class.Name;
+	}
+
+	NewItem.DualClassName = KFW.Class.default.DualClass != None ? KFW.Class.default.DualClass.Name : '';
+	NewItem.AssociatedPerkClasses = KFW.Class.static.GetAssociatedPerkClasses();
+	if (NewItem.AssociatedPerkClasses.Find(class'KFPerk_Survivalist') == INDEX_NONE)
+	{
+		NewItem.AssociatedPerkClasses.AddItem(class'KFPerk_Survivalist');
+	}
+	NewItem.MagazineCapacity = KFW.Class.default.MagazineCapacity[0];
+	NewItem.InitialSpareMags = KFW.Class.default.InitialSpareMags[0];
+	NewItem.MaxSpareAmmo = KFW.Class.default.SpareAmmoCapacity[0];
+	NewItem.InitialSecondaryAmmo = KFW.Class.default.InitialSpareMags[1];
+	NewItem.MaxSecondaryAmmo = KFW.Class.default.MagazineCapacity[1] * KFW.Class.default.SpareAmmoCapacity[1];
+	NewItem.BlocksRequired = KFW.Class.default.InventorySize;
+	NewItem.SecondaryAmmoImagePath = KFW.Class.default.SecondaryAmmoTexture != None ? "img://"$PathName(KFW.Class.default.SecondaryAmmoTexture) : "";
+	NewItem.TraderFilter = KFW.Class.static.GetTraderFilter();
+	NewItem.AltTraderFilter = FT_None;
+	NewItem.InventoryGroup = KFW.Class.default.InventoryGroup;
+	NewItem.GroupPriority = KFW.Class.default.GroupPriority;
+	NewItem.bCanBuyAmmo = true;
+
+	KFW.Class.static.SetTraderWeaponStats(WeaponStats);
+	NewItem.WeaponStats = WeaponStats;
+
+	return true;
 }
 
 function int AddItemByPriority(out SItemInformation WeaponInfo)

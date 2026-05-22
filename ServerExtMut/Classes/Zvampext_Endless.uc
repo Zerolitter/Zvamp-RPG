@@ -386,6 +386,22 @@ final function ReleaseTraderAutoPause(optional bool bClosingTrader=false)
 	DiagLog("ReleaseTraderAutoPause after");
 }
 
+final function HoldTraderTimer(string Source)
+{
+	if (MyKFGRI == None || !MyKFGRI.bTraderIsOpen)
+	{
+		return;
+	}
+
+	DiagLog("HoldTraderTimer "$Source$" before");
+	bZvampextTraderAutoPaused = true;
+	MyKFGRI.bStopCountDown = true;
+	MyKFGRI.bForceNetUpdate = true;
+	ClearTimer(nameof(CloseTraderTimer));
+	DiagLog("HoldTraderTimer "$Source$" after");
+	CompatLog("Trader timer held by "$Source$"; close timer cleared.");
+}
+
 function OpenTrader()
 {
 	DiagLog("OpenTrader before super");
@@ -469,11 +485,7 @@ function ApplyTraderAutoPause()
 	}
 
 	DiagLog("ApplyTraderAutoPause before");
-	bZvampextTraderAutoPaused = true;
-	MyKFGRI.bStopCountDown = true;
-	ClearTimer(nameof(CloseTraderTimer));
-	DiagLog("ApplyTraderAutoPause after");
-	CompatLog("Trader auto-hold enabled; close timer cleared.");
+	HoldTraderTimer("auto-pause");
 }
 
 function InitSpawnManager()
@@ -551,4 +563,5 @@ defaultproperties
 	PlayerControllerClass=class'ExtPlayerController'
 	DefaultPawnClass=class'ExtHumanPawn'
 	GameInfoClassAliases.Add((ShortName="Zvampext_Endless",GameClassName="ServerExtMut.Zvampext_Endless"))
+	GameInfoClassAliases.Add((ShortName="ZVampGameEndless",GameClassName="ServerExtMut.Zvampext_Endless"))
 }

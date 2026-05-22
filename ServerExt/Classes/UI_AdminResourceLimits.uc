@@ -3,9 +3,9 @@
 
 Class UI_AdminResourceLimits extends KFGUI_FloatingWindow;
 
-var KFGUI_TextLable GrenadeDamageLabel, GrenadeRadiusLabel, AmmoPickupLabel, ItemPickupLabel, ArmorPickupLabel;
-var KFGUI_CheckBox GrenadeDamageBox, GrenadeRadiusBox, AmmoPickupBox, ItemPickupBox, ArmorPickupBox;
-var KFGUI_EditBox GrenadeDamageValueBox, GrenadeRadiusValueBox, AmmoPickupValueBox, ItemPickupValueBox, ArmorPickupValueBox;
+var KFGUI_TextLable AmmoBoxCountLabel, ItemBoxCountLabel, PickupRespawnLabel, GrenadesFromAmmoLabel, ArmorFromAmmoLabel;
+var KFGUI_CheckBox AmmoBoxCountBox, ItemBoxCountBox, PickupRespawnBox, GrenadesFromAmmoBox, ArmorFromAmmoBox;
+var KFGUI_EditBox AmmoBoxCountValueBox, ItemBoxCountValueBox, PickupRespawnValueBox, GrenadesFromAmmoValueBox, ArmorFromAmmoValueBox;
 var KFGUI_Button ApplyButton, CloseButton;
 var bool bInitialising;
 
@@ -15,47 +15,48 @@ function InitMenu()
 
 	Super.InitMenu();
 
-	GrenadeDamageLabel = KFGUI_TextLable(FindComponentID('GrenadeDamageLabel'));
-	GrenadeRadiusLabel = KFGUI_TextLable(FindComponentID('GrenadeRadiusLabel'));
-	AmmoPickupLabel = KFGUI_TextLable(FindComponentID('AmmoPickupLabel'));
-	ItemPickupLabel = KFGUI_TextLable(FindComponentID('ItemPickupLabel'));
-	ArmorPickupLabel = KFGUI_TextLable(FindComponentID('ArmorPickupLabel'));
-	GrenadeDamageBox = KFGUI_CheckBox(FindComponentID('GrenadeDamage'));
-	GrenadeRadiusBox = KFGUI_CheckBox(FindComponentID('GrenadeRadius'));
-	AmmoPickupBox = KFGUI_CheckBox(FindComponentID('AmmoPickup'));
-	ItemPickupBox = KFGUI_CheckBox(FindComponentID('ItemPickup'));
-	ArmorPickupBox = KFGUI_CheckBox(FindComponentID('ArmorPickup'));
-	GrenadeDamageValueBox = KFGUI_EditBox(FindComponentID('GrenadeDamageValue'));
-	GrenadeRadiusValueBox = KFGUI_EditBox(FindComponentID('GrenadeRadiusValue'));
-	AmmoPickupValueBox = KFGUI_EditBox(FindComponentID('AmmoPickupValue'));
-	ItemPickupValueBox = KFGUI_EditBox(FindComponentID('ItemPickupValue'));
-	ArmorPickupValueBox = KFGUI_EditBox(FindComponentID('ArmorPickupValue'));
+	AmmoBoxCountLabel = KFGUI_TextLable(FindComponentID('AmmoBoxCountLabel'));
+	ItemBoxCountLabel = KFGUI_TextLable(FindComponentID('ItemBoxCountLabel'));
+	PickupRespawnLabel = KFGUI_TextLable(FindComponentID('PickupRespawnLabel'));
+	GrenadesFromAmmoLabel = KFGUI_TextLable(FindComponentID('GrenadesFromAmmoLabel'));
+	ArmorFromAmmoLabel = KFGUI_TextLable(FindComponentID('ArmorFromAmmoLabel'));
+	AmmoBoxCountBox = KFGUI_CheckBox(FindComponentID('AmmoBoxCount'));
+	ItemBoxCountBox = KFGUI_CheckBox(FindComponentID('ItemBoxCount'));
+	PickupRespawnBox = KFGUI_CheckBox(FindComponentID('PickupRespawn'));
+	GrenadesFromAmmoBox = KFGUI_CheckBox(FindComponentID('GrenadesFromAmmo'));
+	ArmorFromAmmoBox = KFGUI_CheckBox(FindComponentID('ArmorFromAmmo'));
+	AmmoBoxCountValueBox = KFGUI_EditBox(FindComponentID('AmmoBoxCountValue'));
+	ItemBoxCountValueBox = KFGUI_EditBox(FindComponentID('ItemBoxCountValue'));
+	PickupRespawnValueBox = KFGUI_EditBox(FindComponentID('PickupRespawnValue'));
+	GrenadesFromAmmoValueBox = KFGUI_EditBox(FindComponentID('GrenadesFromAmmoValue'));
+	ArmorFromAmmoValueBox = KFGUI_EditBox(FindComponentID('ArmorFromAmmoValue'));
 	ApplyButton = KFGUI_Button(FindComponentID('Apply'));
 	CloseButton = KFGUI_Button(FindComponentID('Close'));
 
 	WindowTitle = "Resource Limits";
-	GrenadeDamageLabel.SetText("Grenade Damage");
-	GrenadeRadiusLabel.SetText("Grenade Radius");
-	AmmoPickupLabel.SetText("Ammo Pickup");
-	ItemPickupLabel.SetText("Item Pickup");
-	ArmorPickupLabel.SetText("Armor Pickup");
+	AmmoBoxCountLabel.SetText("Ammo Boxes");
+	ItemBoxCountLabel.SetText("Weapons / Items");
+	PickupRespawnLabel.SetText("Respawn Seconds");
+	GrenadesFromAmmoLabel.SetText("Grenades / Ammo Box");
+	ArmorFromAmmoLabel.SetText("Armor / Ammo Box");
 	ApplyButton.ButtonText = "APPLY";
+	ApplyButton.ToolTip = "Settings are only sent to the server when APPLY is pressed.";
 	CloseButton.ButtonText = "CLOSE";
 
 	PC = ExtPlayerController(GetPlayer());
 	if (PC!=None)
 	{
 		bInitialising = true;
-		GrenadeDamageBox.bChecked = PC.bAdminGrenadeDamage;
-		GrenadeRadiusBox.bChecked = PC.bAdminGrenadeRadius;
-		AmmoPickupBox.bChecked = PC.bAdminAmmoPickup;
-		ItemPickupBox.bChecked = PC.bAdminItemPickup;
-		ArmorPickupBox.bChecked = PC.bAdminArmorPickup;
-		GrenadeDamageValueBox.ChangeValue(FloatTwo(PC.AdminGrenadeDamageValue));
-		GrenadeRadiusValueBox.ChangeValue(FloatTwo(PC.AdminGrenadeRadiusValue));
-		AmmoPickupValueBox.ChangeValue(FloatTwo(PC.AdminAmmoPickupValue));
-		ItemPickupValueBox.ChangeValue(FloatTwo(PC.AdminItemPickupValue));
-		ArmorPickupValueBox.ChangeValue(FloatTwo(PC.AdminArmorPickupValue));
+		AmmoBoxCountBox.bChecked = PC.bAdminAmmoBoxCount;
+		ItemBoxCountBox.bChecked = PC.bAdminItemBoxCount;
+		PickupRespawnBox.bChecked = PC.bAdminPickupRespawnTime;
+		GrenadesFromAmmoBox.bChecked = PC.bAdminGrenadesFromAmmo;
+		ArmorFromAmmoBox.bChecked = PC.bAdminAmmoBoxArmor;
+		AmmoBoxCountValueBox.ChangeValue(FloatTwo(PC.AdminAmmoBoxCountValue));
+		ItemBoxCountValueBox.ChangeValue(FloatTwo(PC.AdminItemBoxCountValue));
+		PickupRespawnValueBox.ChangeValue(FloatTwo(PC.AdminPickupRespawnTimeValue));
+		GrenadesFromAmmoValueBox.ChangeValue(FloatTwo(PC.AdminGrenadesFromAmmoValue));
+		ArmorFromAmmoValueBox.ChangeValue(FloatTwo(PC.AdminAmmoBoxArmorValue));
 		bInitialising = false;
 	}
 }
@@ -75,22 +76,20 @@ function SubmitSettings()
 	if (bInitialising)
 		return;
 
-	ExtPlayerController(GetPlayer()).AdminSetPickupOverrides(
-		GrenadeDamageBox.bChecked,float(GrenadeDamageValueBox.Value),
-		GrenadeRadiusBox.bChecked,float(GrenadeRadiusValueBox.Value),
-		AmmoPickupBox.bChecked,float(AmmoPickupValueBox.Value),
-		ItemPickupBox.bChecked,float(ItemPickupValueBox.Value),
-		ArmorPickupBox.bChecked,float(ArmorPickupValueBox.Value));
+	ExtPlayerController(GetPlayer()).AdminSetResourceLimits(
+		AmmoBoxCountBox.bChecked,float(AmmoBoxCountValueBox.Value),
+		ItemBoxCountBox.bChecked,float(ItemBoxCountValueBox.Value),
+		PickupRespawnBox.bChecked,float(PickupRespawnValueBox.Value),
+		GrenadesFromAmmoBox.bChecked,float(GrenadesFromAmmoValueBox.Value),
+		ArmorFromAmmoBox.bChecked,float(ArmorFromAmmoValueBox.Value));
 }
 
 function ToggleCheckBox(KFGUI_CheckBox Sender)
 {
-	SubmitSettings();
 }
 
 function ValueChanged(KFGUI_EditBox Sender)
 {
-	SubmitSettings();
 }
 
 function ButtonClicked(KFGUI_Button Sender)
@@ -115,8 +114,8 @@ defaultproperties
 	bAlwaysTop=true
 	bOnlyThisFocus=true
 
-	Begin Object Class=KFGUI_TextLable Name=GrenadeDamageText
-		ID="GrenadeDamageLabel"
+	Begin Object Class=KFGUI_TextLable Name=AmmoBoxCountText
+		ID="AmmoBoxCountLabel"
 		XPosition=0.07
 		YPosition=0.18
 		XSize=0.46
@@ -125,10 +124,10 @@ defaultproperties
 		AlignY=1
 		FontScale=1
 	End Object
-	Components.Add(GrenadeDamageText)
+	Components.Add(AmmoBoxCountText)
 
-	Begin Object Class=KFGUI_TextLable Name=GrenadeRadiusText
-		ID="GrenadeRadiusLabel"
+	Begin Object Class=KFGUI_TextLable Name=ItemBoxCountText
+		ID="ItemBoxCountLabel"
 		XPosition=0.07
 		YPosition=0.29
 		XSize=0.46
@@ -137,10 +136,10 @@ defaultproperties
 		AlignY=1
 		FontScale=1
 	End Object
-	Components.Add(GrenadeRadiusText)
+	Components.Add(ItemBoxCountText)
 
-	Begin Object Class=KFGUI_TextLable Name=AmmoPickupText
-		ID="AmmoPickupLabel"
+	Begin Object Class=KFGUI_TextLable Name=PickupRespawnText
+		ID="PickupRespawnLabel"
 		XPosition=0.07
 		YPosition=0.40
 		XSize=0.46
@@ -149,10 +148,10 @@ defaultproperties
 		AlignY=1
 		FontScale=1
 	End Object
-	Components.Add(AmmoPickupText)
+	Components.Add(PickupRespawnText)
 
-	Begin Object Class=KFGUI_TextLable Name=ItemPickupText
-		ID="ItemPickupLabel"
+	Begin Object Class=KFGUI_TextLable Name=GrenadesFromAmmoText
+		ID="GrenadesFromAmmoLabel"
 		XPosition=0.07
 		YPosition=0.51
 		XSize=0.46
@@ -161,10 +160,10 @@ defaultproperties
 		AlignY=1
 		FontScale=1
 	End Object
-	Components.Add(ItemPickupText)
+	Components.Add(GrenadesFromAmmoText)
 
-	Begin Object Class=KFGUI_TextLable Name=ArmorPickupText
-		ID="ArmorPickupLabel"
+	Begin Object Class=KFGUI_TextLable Name=ArmorFromAmmoText
+		ID="ArmorFromAmmoLabel"
 		XPosition=0.07
 		YPosition=0.62
 		XSize=0.46
@@ -173,60 +172,60 @@ defaultproperties
 		AlignY=1
 		FontScale=1
 	End Object
-	Components.Add(ArmorPickupText)
+	Components.Add(ArmorFromAmmoText)
 
-	Begin Object Class=KFGUI_CheckBox Name=GrenadeDamageCheckBox
-		ID="GrenadeDamage"
+	Begin Object Class=KFGUI_CheckBox Name=AmmoBoxCountCheckBox
+		ID="AmmoBoxCount"
 		XPosition=0.56
 		YPosition=0.18
 		XSize=0.07
 		YSize=0.08
 		OnCheckChange=ToggleCheckBox
 	End Object
-	Components.Add(GrenadeDamageCheckBox)
+	Components.Add(AmmoBoxCountCheckBox)
 
-	Begin Object Class=KFGUI_CheckBox Name=GrenadeRadiusCheckBox
-		ID="GrenadeRadius"
+	Begin Object Class=KFGUI_CheckBox Name=ItemBoxCountCheckBox
+		ID="ItemBoxCount"
 		XPosition=0.56
 		YPosition=0.29
 		XSize=0.07
 		YSize=0.08
 		OnCheckChange=ToggleCheckBox
 	End Object
-	Components.Add(GrenadeRadiusCheckBox)
+	Components.Add(ItemBoxCountCheckBox)
 
-	Begin Object Class=KFGUI_CheckBox Name=AmmoPickupCheckBox
-		ID="AmmoPickup"
+	Begin Object Class=KFGUI_CheckBox Name=PickupRespawnCheckBox
+		ID="PickupRespawn"
 		XPosition=0.56
 		YPosition=0.40
 		XSize=0.07
 		YSize=0.08
 		OnCheckChange=ToggleCheckBox
 	End Object
-	Components.Add(AmmoPickupCheckBox)
+	Components.Add(PickupRespawnCheckBox)
 
-	Begin Object Class=KFGUI_CheckBox Name=ItemPickupCheckBox
-		ID="ItemPickup"
+	Begin Object Class=KFGUI_CheckBox Name=GrenadesFromAmmoCheckBox
+		ID="GrenadesFromAmmo"
 		XPosition=0.56
 		YPosition=0.51
 		XSize=0.07
 		YSize=0.08
 		OnCheckChange=ToggleCheckBox
 	End Object
-	Components.Add(ItemPickupCheckBox)
+	Components.Add(GrenadesFromAmmoCheckBox)
 
-	Begin Object Class=KFGUI_CheckBox Name=ArmorPickupCheckBox
-		ID="ArmorPickup"
+	Begin Object Class=KFGUI_CheckBox Name=ArmorFromAmmoCheckBox
+		ID="ArmorFromAmmo"
 		XPosition=0.56
 		YPosition=0.62
 		XSize=0.07
 		YSize=0.08
 		OnCheckChange=ToggleCheckBox
 	End Object
-	Components.Add(ArmorPickupCheckBox)
+	Components.Add(ArmorFromAmmoCheckBox)
 
-	Begin Object Class=KFGUI_EditBox Name=GrenadeDamageValueEdit
-		ID="GrenadeDamageValue"
+	Begin Object Class=KFGUI_EditBox Name=AmmoBoxCountValueEdit
+		ID="AmmoBoxCountValue"
 		XPosition=0.72
 		YPosition=0.18
 		XSize=0.18
@@ -234,10 +233,10 @@ defaultproperties
 		MaxTextLength=4
 		OnTextChange=ValueChanged
 	End Object
-	Components.Add(GrenadeDamageValueEdit)
+	Components.Add(AmmoBoxCountValueEdit)
 
-	Begin Object Class=KFGUI_EditBox Name=GrenadeRadiusValueEdit
-		ID="GrenadeRadiusValue"
+	Begin Object Class=KFGUI_EditBox Name=ItemBoxCountValueEdit
+		ID="ItemBoxCountValue"
 		XPosition=0.72
 		YPosition=0.29
 		XSize=0.18
@@ -245,10 +244,10 @@ defaultproperties
 		MaxTextLength=4
 		OnTextChange=ValueChanged
 	End Object
-	Components.Add(GrenadeRadiusValueEdit)
+	Components.Add(ItemBoxCountValueEdit)
 
-	Begin Object Class=KFGUI_EditBox Name=AmmoPickupValueEdit
-		ID="AmmoPickupValue"
+	Begin Object Class=KFGUI_EditBox Name=PickupRespawnValueEdit
+		ID="PickupRespawnValue"
 		XPosition=0.72
 		YPosition=0.40
 		XSize=0.18
@@ -256,10 +255,10 @@ defaultproperties
 		MaxTextLength=4
 		OnTextChange=ValueChanged
 	End Object
-	Components.Add(AmmoPickupValueEdit)
+	Components.Add(PickupRespawnValueEdit)
 
-	Begin Object Class=KFGUI_EditBox Name=ItemPickupValueEdit
-		ID="ItemPickupValue"
+	Begin Object Class=KFGUI_EditBox Name=GrenadesFromAmmoValueEdit
+		ID="GrenadesFromAmmoValue"
 		XPosition=0.72
 		YPosition=0.51
 		XSize=0.18
@@ -267,10 +266,10 @@ defaultproperties
 		MaxTextLength=4
 		OnTextChange=ValueChanged
 	End Object
-	Components.Add(ItemPickupValueEdit)
+	Components.Add(GrenadesFromAmmoValueEdit)
 
-	Begin Object Class=KFGUI_EditBox Name=ArmorPickupValueEdit
-		ID="ArmorPickupValue"
+	Begin Object Class=KFGUI_EditBox Name=ArmorFromAmmoValueEdit
+		ID="ArmorFromAmmoValue"
 		XPosition=0.72
 		YPosition=0.62
 		XSize=0.18
@@ -278,7 +277,7 @@ defaultproperties
 		MaxTextLength=4
 		OnTextChange=ValueChanged
 	End Object
-	Components.Add(ArmorPickupValueEdit)
+	Components.Add(ArmorFromAmmoValueEdit)
 
 	Begin Object Class=KFGUI_Button_Tint Name=ApplyButton
 		ID="Apply"

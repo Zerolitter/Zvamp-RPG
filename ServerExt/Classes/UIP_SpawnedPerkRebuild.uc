@@ -16,12 +16,12 @@
 // You should have received a copy of the GNU General Public License along
 // with Server Extension. If not, see <https://www.gnu.org/licenses/>.
 
-Class UIP_SpawnedPerkRebuild extends KFGUI_MultiComponent;
+Class UIP_SpawnedPerkRebuild extends KFGUI_MultiComponent config(ServerExt);
 
 var KFGUI_List PerkRail;
 var KFGUI_ComponentList StatsList;
 var UIR_PerkTraitList TraitsList;
-var KFGUI_Button B_Reset, B_Unload, B_Prestige, B_Configure;
+var KFGUI_Button B_Reset, B_Unload, B_Prestige, B_Configure, B_OTM;
 var KFGUI_Button TraitTabAll, TraitTabCombat, TraitTabSurvival, TraitTabUtility, TraitTabZed;
 var KFGUI_Button B_GrenadePrev, B_GrenadeNext;
 var KFGUI_Button StatBuyButtons[24];
@@ -30,6 +30,8 @@ var ExtPerkManager CurrentManager;
 var Ext_PerkBase DisplayPerk;
 var array<UIR_PerkStat> StatBuyers;
 var bool bShowingTraits;
+var bool bRememberTraitMenu;
+var bool bPendingRestoreTraitMenu;
 var int LastTraitPerkPoints, LastTraitCount;
 var class<Ext_PerkBase> LastTraitPerkClass;
 var class<Ext_PerkBase> LastRequestedPerkClass;
@@ -37,7 +39,13 @@ var array<string> ThanksAuthors;
 var int ThanksAuthorIndex;
 var float LastThanksCycleTime;
 var float LastPerkReplicationRequestTime;
+var transient float LastPerkUIDebugTime;
+var transient string LastPerkUIDebugState;
 var name ActiveTraitCategory;
+var config string PerkUIServerName;
+var config string PerkUIBrandText;
+var config string PerkUISkillHintText;
+var bool bPerkUIDebug;
 
 function InitMenu()
 {
@@ -50,6 +58,7 @@ function InitMenu()
 	B_Unload = KFGUI_Button(FindComponentID('Unload'));
 	B_Prestige = KFGUI_Button(FindComponentID('Prestige'));
 	B_Configure = KFGUI_Button(FindComponentID('Configure'));
+	B_OTM = KFGUI_Button(FindComponentID('OTM'));
 	TraitTabAll = KFGUI_Button(FindComponentID('TraitTabAll'));
 	TraitTabCombat = KFGUI_Button(FindComponentID('TraitTabCombat'));
 	TraitTabSurvival = KFGUI_Button(FindComponentID('TraitTabSurvival'));
@@ -80,26 +89,40 @@ function InitMenu()
 	}
 	XPBarHotspot = KFGUI_ZvampInvisibleHotspot(FindComponentID('XPBar'));
 
-	B_Reset.ButtonText = "COMMIT SP";
-	B_Unload.ButtonText = "UNLOAD";
-	B_Prestige.ButtonText = "PRESTIGE";
-	B_Configure.ButtonText = "CONFIGURE";
-	TraitTabAll.ButtonText = "All";
-	TraitTabCombat.ButtonText = "Combat";
-	TraitTabSurvival.ButtonText = "Support";
-	TraitTabUtility.ButtonText = "Utility";
-	TraitTabZed.ButtonText = "Zed";
-	B_Configure.ToolTip = "Configure perk-unique traits";
-	B_GrenadePrev.ButtonText = "<";
-	B_GrenadeNext.ButtonText = ">";
-	B_GrenadePrev.ToolTip = "Grenade cycling is not wired yet";
-	B_GrenadeNext.ToolTip = "Grenade cycling is not wired yet";
+	if (B_Reset!=None) B_Reset.ButtonText = "COMMIT SP";
+	if (B_Unload!=None) B_Unload.ButtonText = "UNLOAD";
+	if (B_Prestige!=None) B_Prestige.ButtonText = "PRESTIGE";
+	if (B_Configure!=None)
+	{
+		B_Configure.ButtonText = "CONFIGURE";
+		B_Configure.ToolTip = "Placeholder for future perk configuration content";
+	}
+	if (B_OTM!=None)
+	{
+		B_OTM.ButtonText = "=>";
+		B_OTM.ToolTip = "Trait Menu";
+	}
+	if (TraitTabAll!=None) TraitTabAll.ButtonText = "All";
+	if (TraitTabCombat!=None) TraitTabCombat.ButtonText = "Combat";
+	if (TraitTabSurvival!=None) TraitTabSurvival.ButtonText = "Support";
+	if (TraitTabUtility!=None) TraitTabUtility.ButtonText = "Utility";
+	if (TraitTabZed!=None) TraitTabZed.ButtonText = "Zed";
+	if (B_GrenadePrev!=None)
+	{
+		B_GrenadePrev.ButtonText = "<";
+		B_GrenadePrev.ToolTip = "Grenade cycling is not wired yet";
+	}
+	if (B_GrenadeNext!=None)
+	{
+		B_GrenadeNext.ButtonText = ">";
+		B_GrenadeNext.ToolTip = "Grenade cycling is not wired yet";
+	}
 	ActiveTraitCategory = 'All';
 	InitThanksAuthors();
 
-	B_Reset.SetDisabled(true);
-	B_Unload.SetDisabled(true);
-	B_Prestige.SetDisabled(true);
+	if (B_Reset!=None) B_Reset.SetDisabled(true);
+	if (B_Unload!=None) B_Unload.SetDisabled(true);
+	if (B_Prestige!=None) B_Prestige.SetDisabled(true);
 	SetGrenadeButtonsVisible(false);
 	SetConfigureMode(false);
 
@@ -123,7 +146,9 @@ final function InitThanksAuthors()
 function ShowMenu()
 {
 	Super.ShowMenu();
+	DebugPerkUI("ShowMenu");
 	SetConfigureMode(false);
+	bPendingRestoreTraitMenu = bRememberTraitMenu;
 	SetTimer(0.1,true);
 	Timer();
 }
@@ -132,12 +157,13 @@ function CloseMenu()
 {
 	if (DisplayPerk!=None && ExtPlayerController(GetPlayer())!=None)
 		ExtPlayerController(GetPlayer()).CancelPendingStatBuys(DisplayPerk.Class);
+	DebugPerkUI("CloseMenu");
 	SetConfigureMode(false);
+	bPendingRestoreTraitMenu = false;
 	Super.CloseMenu();
 	SetTimer(0,false);
 	CurrentManager = None;
 	DisplayPerk = None;
-	bShowingTraits = false;
 }
 
 function bool CaptureMouse()
@@ -151,6 +177,15 @@ function bool CaptureMouse()
 			return true;
 		}
 	}
+	if (B_OTM!=None)
+	{
+		B_OTM.ComputeCoords();
+		if (B_OTM.CaptureMouse())
+		{
+			MouseArea = B_OTM;
+			return true;
+		}
+	}
 	return Super.CaptureMouse();
 }
 
@@ -158,6 +193,7 @@ function Timer()
 {
 	local ExtPlayerController PC;
 	local ExtPlayerReplicationInfo EPRI;
+	local bool bManagerReady;
 
 	PC = ExtPlayerController(GetPlayer());
 	if (PC==None)
@@ -172,30 +208,132 @@ function Timer()
 	}
 
 	CurrentManager = PC.ActivePerkManager;
+	if (CurrentManager==None && PC.RecoverZvampextClientPerkManager())
+		CurrentManager = PC.ActivePerkManager;
 	if (CurrentManager!=None)
 	{
 		if (CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None)
 			CurrentManager.InitPerks();
-		PerkRail.ChangeListSize(CurrentManager.UserPerks.Length);
+		if (PerkRail!=None)
+			PerkRail.ChangeListSize(CurrentManager.UserPerks.Length);
+	}
+	else
+	{
+		DisplayPerk = None;
+		DebugPerkUI("NoManager");
+		RequestPerkReplicationIfNeeded(PC);
+		HandlePerkDataNotReady();
+		return;
 	}
 
 	DisplayPerk = ResolveDisplayPerk();
-	if ((CurrentManager==None || CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None || DisplayPerk==None || !DisplayPerk.bPerkNetReady)
-		&& PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime>=2.f)
+	bManagerReady = (CurrentManager.UserPerks.Length>0 && DisplayPerk!=None);
+	if (!bManagerReady || !IsDisplayPerkUsable())
 	{
-		LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
-		PC.ZvampextRequestPerkReplication();
+		DebugPerkUI("NotReady");
+		RequestPerkReplicationIfNeeded(PC);
+		HandlePerkDataNotReady();
+		return;
 	}
+	if (!DisplayPerk.bPerkNetReady)
+		RequestPerkReplicationIfNeeded(PC);
+
 	UpdateActionButtons();
 	if (!bShowingTraits)
 		UpdateStatsList();
+	if (bPendingRestoreTraitMenu && IsDisplayPerkUsable())
+	{
+		UpdateStatsList();
+		SetConfigureMode(true);
+		bPendingRestoreTraitMenu = false;
+	}
 	if (bShowingTraits)
 		UpdateTraitsIfNeeded();
+	DebugPerkUI("Ready");
+}
+
+final function DebugPerkUI(string State)
+{
+	local ExtPlayerController PC;
+	local ExtPlayerReplicationInfo EPRI;
+	local int UserPerkCount, StatCount, TraitCount;
+	local string CurrentPerkName, ECurrentPerkName, DisplayPerkName, Msg;
+
+	if (!bPerkUIDebug)
+		return;
+
+	PC = ExtPlayerController(GetPlayer());
+	if (PC!=None)
+	{
+		if (PC.WorldInfo.TimeSeconds-LastPerkUIDebugTime<1.5f && LastPerkUIDebugState==State)
+			return;
+		LastPerkUIDebugTime = PC.WorldInfo.TimeSeconds;
+		EPRI = ExtPlayerReplicationInfo(PC.PlayerReplicationInfo);
+	}
+	LastPerkUIDebugState = State;
+
+	if (CurrentManager!=None)
+	{
+		UserPerkCount = CurrentManager.UserPerks.Length;
+		if (CurrentManager.CurrentPerk!=None)
+			CurrentPerkName = string(CurrentManager.CurrentPerk.Class.Name);
+		else CurrentPerkName = "None";
+	}
+	else CurrentPerkName = "NoManager";
+
+	if (EPRI!=None && EPRI.ECurrentPerk!=None)
+		ECurrentPerkName = string(EPRI.ECurrentPerk.Name);
+	else ECurrentPerkName = "None";
+
+	if (DisplayPerk!=None)
+	{
+		DisplayPerkName = string(DisplayPerk.Class.Name);
+		StatCount = DisplayPerk.PerkStats.Length;
+		TraitCount = DisplayPerk.PerkTraits.Length;
+	}
+	else DisplayPerkName = "None";
+
+	Msg = "[ZvampPerkUI] State="$State
+		$" UserPerks="$UserPerkCount
+		$" Current="$CurrentPerkName
+		$" ECurrent="$ECurrentPerkName
+		$" Display="$DisplayPerkName
+		$" Stats="$StatCount
+		$" Traits="$TraitCount
+		$" NetReady="$string(DisplayPerk!=None && DisplayPerk.bPerkNetReady);
+	`log(Msg);
+}
+
+final function RequestPerkReplicationIfNeeded(ExtPlayerController PC)
+{
+	if (PC==None)
+		return;
+	if (PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime<2.f)
+		return;
+	LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
+	PC.ZvampextRequestPerkReplication();
+}
+
+final function HandlePerkDataNotReady()
+{
+	UpdateActionButtons();
+	SetStatButtonsVisible(false);
+	ClearStatsListComponents();
+	if (TraitsList!=None)
+	{
+		TraitsList.DisplayPerk = None;
+		TraitsList.ChangeListSize(0);
+	}
+}
+
+final function bool IsDisplayPerkUsable()
+{
+	return (DisplayPerk!=None && DisplayPerk.bPerkNetReady && DisplayPerk.PerkStats.Length>0 && DisplayPerk.PerkTraits.Length>0);
 }
 
 function DrawMenu()
 {
-	local float W,H,Sc,XL,YL,HeaderX,HeaderY,HeaderW,HeaderH,IconSize,BarX,BarY,BarW,BarH,XPFrac;
+	local float W,H,Sc,XL,YL,HeaderX,HeaderY,HeaderW,HeaderH,IconSize,BarX,BarY,BarW,BarH,XPFrac,CardX,CardY,CardW,CardH;
 	local string S;
 	local int PendingCost;
 	local ExtPlayerController PC;
@@ -204,37 +342,48 @@ function DrawMenu()
 	W = CompPos[2];
 	H = CompPos[3];
 
-	Canvas.SetDrawColor(3,3,6,48);
+	Canvas.SetDrawColor(3,4,7,105);
 	Canvas.SetPos(0.f,0.f);
 	Owner.CurrentStyle.DrawWhiteBox(W,H);
 
-	Canvas.SetDrawColor(5,5,8,0);
+	Canvas.SetDrawColor(5,6,10,150);
 	Canvas.SetPos(W*0.005,H*0.015);
 	Owner.CurrentStyle.DrawWhiteBox(W*0.075,H*0.960);
-	Canvas.SetDrawColor(11,7,22,0);
-	Canvas.SetPos(W*0.005,H*0.150);
-	Owner.CurrentStyle.DrawWhiteBox(W*0.900,H*0.022);
+	Canvas.SetDrawColor(82,24,35,180);
+	Canvas.SetPos(W*0.079,H*0.155);
+	Owner.CurrentStyle.DrawWhiteBox(W*0.826,2.f);
 
 	HeaderX = W * 0.080;
 	HeaderY = H * 0.015;
-	HeaderW = W * 0.395;
+	HeaderW = W * 0.825;
 	HeaderH = H * 0.13;
 
-	Canvas.SetDrawColor(9,8,12,210);
+	Canvas.SetDrawColor(12,13,18,225);
 	Canvas.SetPos(HeaderX,HeaderY);
 	Owner.CurrentStyle.DrawWhiteBox(HeaderW,HeaderH);
+	Canvas.SetDrawColor(135,30,38,235);
+	Canvas.SetPos(HeaderX,HeaderY);
+	Owner.CurrentStyle.DrawWhiteBox(HeaderW,4.f);
+	Canvas.SetDrawColor(43,46,56,210);
+	Canvas.SetPos(HeaderX,HeaderY+HeaderH-2.f);
+	Owner.CurrentStyle.DrawWhiteBox(HeaderW,2.f);
+
 	IconSize = HeaderH * 0.85;
+	CardW = HeaderW*0.255;
+	CardH = HeaderH*0.62;
+	CardX = HeaderX+HeaderW*0.215;
+	CardY = HeaderY+HeaderH*0.20;
 	BarX = HeaderX+HeaderH*0.06+IconSize+HeaderH*0.10;
-	BarY = HeaderY+HeaderH-7.f;
-	BarW = HeaderW-(BarX-HeaderX);
+	BarY = HeaderY+HeaderH-9.f;
+	BarW = HeaderW*0.50;
 	BarH = 7.f;
-	Canvas.SetDrawColor(45,10,10,160);
+	Canvas.SetDrawColor(39,17,22,200);
 	Canvas.SetPos(BarX,BarY);
 	Owner.CurrentStyle.DrawWhiteBox(BarW,BarH);
 	if (XPBarHotspot!=None)
 		XPBarHotspot.SetPosition(BarX/W,BarY/H,BarW/W,BarH/H);
 
-	if (DisplayPerk!=None && DisplayPerk.bPerkNetReady)
+	if (IsDisplayPerkUsable())
 	{
 		PC = ExtPlayerController(GetPlayer());
 		if (PC!=None)
@@ -245,32 +394,43 @@ function DrawMenu()
 		Canvas.DrawRect(IconSize,IconSize,DisplayPerk.PerkIcon);
 
 		Canvas.Font = Owner.CurrentStyle.PickFont(2,Sc);
-		Canvas.SetDrawColor(245,235,255,255);
+		Canvas.SetDrawColor(246,242,230,255);
 		S = DisplayPerk.PerkName;
 		Canvas.SetPos(HeaderX+IconSize+HeaderH*0.16,HeaderY+HeaderH*0.12);
 		Canvas.DrawText(S,,Sc,Sc);
 
 		Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-		Canvas.SetDrawColor(218,207,238,255);
+		Canvas.SetDrawColor(204,205,214,255);
 		S = "Prestige Rank: "$DisplayPerk.CurrentPrestige;
 		Canvas.SetPos(HeaderX+IconSize+HeaderH*0.17,HeaderY+HeaderH*0.58);
 		Canvas.DrawText(S,,Sc,Sc);
 
-		S = "Arrange XP: "$Max(DisplayPerk.CurrentSP-PendingCost,0);
-		if (PendingCost>0)
+		Canvas.SetDrawColor((PendingCost>0 ? 80 : 26),(PendingCost>0 ? 42 : 29),(PendingCost>0 ? 22 : 36),220);
+		Canvas.SetPos(CardX,CardY);
+		Owner.CurrentStyle.DrawWhiteBox(CardW,CardH);
+		Canvas.SetDrawColor((PendingCost>0 ? 220 : 90),(PendingCost>0 ? 132 : 78),(PendingCost>0 ? 45 : 120),220);
+		Canvas.SetPos(CardX,CardY);
+		Owner.CurrentStyle.DrawWhiteBox(4.f,CardH);
+
+		if (PendingCost>DisplayPerk.CurrentSP)
+			S = "Arrange XP: "$DisplayPerk.CurrentSP;
+		else S = "Arrange XP: "$Max(DisplayPerk.CurrentSP-PendingCost,0);
+		if (PendingCost>0 && PendingCost<=DisplayPerk.CurrentSP)
 			S $= " (-"$PendingCost$")";
 		Canvas.TextSize(S,XL,YL,Sc,Sc);
-		Canvas.SetPos(HeaderX+HeaderW-XL-HeaderH*0.07,HeaderY+HeaderH*0.58);
+		Canvas.SetDrawColor((PendingCost>0 ? 255 : 232),(PendingCost>0 ? 225 : 224),(PendingCost>0 ? 158 : 238),255);
+		Canvas.SetPos(CardX+CardW-XL-CardH*0.14,CardY+CardH*0.50);
 		Canvas.DrawText(S,,Sc,Sc);
 
 		Canvas.Font = Owner.CurrentStyle.PickFont(3,Sc);
 		S = DisplayPerk.GetLevelString();
 		Canvas.TextSize(S,XL,YL,Sc,Sc);
-		Canvas.SetPos(HeaderX+HeaderW-XL-HeaderH*0.07,HeaderY+HeaderH*0.08);
+		Canvas.SetDrawColor(246,242,230,255);
+		Canvas.SetPos(CardX+CardW-XL-CardH*0.14,CardY+CardH*0.10);
 		Canvas.DrawText(S,,Sc,Sc);
 
 		XPFrac = DisplayPerk.GetProgressPercent();
-		Canvas.SetDrawColor(150,16,22,235);
+		Canvas.SetDrawColor(174,26,34,240);
 		Canvas.SetPos(BarX,BarY);
 		Owner.CurrentStyle.DrawWhiteBox(BarW * XPFrac,BarH);
 		if (XPBarHotspot!=None)
@@ -293,14 +453,66 @@ function DrawMenu()
 		Canvas.DrawText(S,,Sc,Sc);
 	}
 
+	DrawBrandingText(W,H);
+	DrawSkillsPanel(W,H);
 	if (bShowingTraits)
 		DrawTraitPanel(W,H);
-	else
-	{
-		DrawSkillsPanel(W,H);
-		DrawBonusPanel(W,H);
-	}
 	DrawThanksBanner(W,H);
+}
+
+final function DrawBrandingText(float W, float H)
+{
+	local KFGameReplicationInfo KFGRI;
+	local float Sc,XL,YL,X,BrandScale,ServerY,PresentY;
+	local string S;
+
+	S = PerkUIServerName;
+	if (S=="")
+	{
+		KFGRI = KFGameReplicationInfo(GetPlayer().WorldInfo.GRI);
+		if (KFGRI!=None)
+			S = KFGRI.ServerName;
+	}
+	if (S=="")
+		S = PerkUIBrandText;
+	if (S=="")
+		S = "Welcome to the Zvamp!";
+	Canvas.Font = Owner.CurrentStyle.PickFont(5,Sc);
+	BrandScale = Sc*1.20;
+	Canvas.TextSize(S,XL,YL,BrandScale,BrandScale);
+	X = W*0.665-XL*0.5;
+	ServerY = H*0.061;
+	PresentY = ServerY - ((ServerY - H*0.034) * 2.f);
+
+	Canvas.SetDrawColor(93,65,166,245);
+	Canvas.SetPos(X-1.f,PresentY);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+	Canvas.SetPos(X+1.f,PresentY);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+	Canvas.SetPos(X,PresentY-0.001*H);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+	Canvas.SetPos(X,PresentY+0.001*H);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+	Canvas.SetDrawColor(245,240,255,255);
+	Canvas.SetPos(X,PresentY);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+	Canvas.SetPos(X+0.75f,PresentY);
+	Canvas.DrawText("Zvamp presents",,BrandScale,BrandScale);
+
+	Canvas.SetDrawColor(93,65,166,245);
+	Canvas.SetPos(X-1.f,ServerY);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
+	Canvas.SetPos(X+1.f,ServerY);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
+	Canvas.SetPos(X,ServerY-0.001*H);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
+	Canvas.SetPos(X,ServerY+0.001*H);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
+	Canvas.SetDrawColor(245,240,255,255);
+	Canvas.SetPos(X,ServerY);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
+	Canvas.SetPos(X+0.75f,ServerY);
+	Canvas.DrawText(S,,BrandScale,BrandScale);
 }
 
 function ButtonClicked(KFGUI_Button Sender)
@@ -311,7 +523,14 @@ function ButtonClicked(KFGUI_Button Sender)
 	switch (Sender.ID)
 	{
 	case 'Configure':
-		SetConfigureMode(!bShowingTraits);
+		PlayMenuSound(MN_ClickButton);
+		if (ExtPlayerController(GetPlayer())!=None)
+			ExtPlayerController(GetPlayer()).ClientMessage("Configure content is reserved for a future Perks UI pass.");
+		break;
+	case 'OTM':
+		bRememberTraitMenu = !bShowingTraits;
+		bPendingRestoreTraitMenu = false;
+		SetConfigureMode(bRememberTraitMenu);
 		PlayMenuSound(MN_ClickButton);
 		break;
 	case 'Reset':
@@ -416,9 +635,14 @@ final function SetConfigureMode(bool bShowTraits)
 
 	if (B_Configure!=None)
 	{
-		if (bShowingTraits)
-			B_Configure.ButtonText = "BACK";
-		else B_Configure.ButtonText = "CONFIGURE";
+		B_Configure.ButtonText = "CONFIGURE";
+		B_Configure.SetPosition(0.095,0.875,0.364,0.045);
+	}
+	if (B_OTM!=None)
+	{
+		B_OTM.ButtonText = (bShowingTraits ? "<=" : "=>");
+		B_OTM.ToolTip = "Trait Menu";
+		B_OTM.SetPosition(0.470,0.425,0.030,0.180);
 	}
 
 	if (TraitsList==None)
@@ -426,15 +650,15 @@ final function SetConfigureMode(bool bShowTraits)
 
 	if (bShowingTraits)
 	{
-		TraitsList.SetPosition(0.095,0.285,0.785,0.55);
+		TraitsList.SetPosition(0.515,0.285,0.375,0.540);
 		TraitsList.OldXSize = -1.f;
 		if (StatsList!=None)
 		{
-			StatsList.SetPosition(2.0,2.0,0.01,0.01);
+			StatsList.SetPosition(0.095,0.275,0.370,0.525);
 			StatsList.OldXSize = -1.f;
 		}
 		LastTraitPerkClass = None;
-		SetActionButtonsVisible(false);
+		SetActionButtonsVisible(true);
 		SetGrenadeButtonsVisible(false);
 		SetTraitTabsVisible(true);
 		UpdateTraits();
@@ -445,7 +669,7 @@ final function SetConfigureMode(bool bShowTraits)
 		TraitsList.OldXSize = -1.f;
 		if (StatsList!=None)
 		{
-			StatsList.SetPosition(0.085,0.235,0.370,0.555);
+			StatsList.SetPosition(0.095,0.275,0.370,0.525);
 			StatsList.OldXSize = -1.f;
 		}
 		SetActionButtonsVisible(true);
@@ -463,12 +687,9 @@ final function UpdateStatsList()
 	if (StatsList==None)
 		return;
 
-	if (DisplayPerk==None || !DisplayPerk.bPerkNetReady)
+	if (!IsDisplayPerkUsable())
 	{
-		for (i=0; i<StatsList.ItemComponents.Length; ++i)
-			if (i<StatBuyers.Length && StatBuyers[i]!=None)
-				StatBuyers[i].CloseMenu();
-		StatsList.ItemComponents.Length = 0;
+		ClearStatsListComponents();
 		return;
 	}
 
@@ -507,6 +728,20 @@ final function UpdateStatsList()
 	}
 }
 
+final function ClearStatsListComponents()
+{
+	local int i;
+
+	if (StatsList==None)
+		return;
+	for (i=0; i<StatsList.ItemComponents.Length; ++i)
+	{
+		if (i<StatBuyers.Length && StatBuyers[i]!=None)
+			StatBuyers[i].CloseMenu();
+	}
+	StatsList.ItemComponents.Length = 0;
+}
+
 final function SetTraitTabsVisible(bool bVisible)
 {
 	if (TraitTabAll==None || TraitTabCombat==None || TraitTabSurvival==None || TraitTabUtility==None || TraitTabZed==None)
@@ -514,11 +749,11 @@ final function SetTraitTabsVisible(bool bVisible)
 
 	if (bVisible)
 	{
-		TraitTabAll.SetPosition(0.350,0.235,0.090,0.040);
-		TraitTabCombat.SetPosition(0.440,0.235,0.120,0.040);
-		TraitTabSurvival.SetPosition(0.560,0.235,0.120,0.040);
-		TraitTabUtility.SetPosition(0.680,0.235,0.110,0.040);
-		TraitTabZed.SetPosition(0.790,0.235,0.090,0.040);
+		TraitTabAll.SetPosition(0.515,0.235,0.070,0.040);
+		TraitTabCombat.SetPosition(0.585,0.235,0.085,0.040);
+		TraitTabSurvival.SetPosition(0.670,0.235,0.085,0.040);
+		TraitTabUtility.SetPosition(0.755,0.235,0.080,0.040);
+		TraitTabZed.SetPosition(0.835,0.235,0.055,0.040);
 	}
 	else
 	{
@@ -548,7 +783,7 @@ final function UpdateActionButtons()
 	local bool bReady;
 	local int PendingCost;
 
-	bReady = (DisplayPerk!=None && DisplayPerk.bPerkNetReady);
+	bReady = IsDisplayPerkUsable();
 	PC = ExtPlayerController(GetPlayer());
 	if (PC!=None && DisplayPerk!=None)
 		PendingCost = PC.GetPendingStatBuyCost(DisplayPerk.Class);
@@ -556,7 +791,7 @@ final function UpdateActionButtons()
 	{
 		B_Reset.ButtonText = "COMMIT SP";
 		B_Reset.ToolTip = "Commit queued skill point purchases.";
-		B_Reset.SetDisabled(bShowingTraits || !bReady || PendingCost<=0);
+		B_Reset.SetDisabled(!bReady || PendingCost<=0);
 	}
 	if (B_Unload!=None)
 	{
@@ -570,16 +805,18 @@ final function UpdateActionButtons()
 			B_Unload.ButtonText = "UNLOAD";
 			B_Unload.ToolTip = "Unload this perk's spent skill points.";
 		}
-		B_Unload.SetDisabled(bShowingTraits || !bReady);
+		B_Unload.SetDisabled(!bReady);
 	}
 	if (B_Prestige!=None)
 	{
-		if (bShowingTraits || !bReady)
+		if (!bReady)
 			B_Prestige.SetDisabled(true);
 		else B_Prestige.SetDisabled(!DisplayPerk.CanPrestige());
 	}
 	if (B_Configure!=None)
 		B_Configure.SetDisabled(false);
+	if (B_OTM!=None)
+		B_OTM.SetDisabled(!bReady);
 }
 
 final function SetActionButtonsVisible(bool bVisible)
@@ -589,9 +826,9 @@ final function SetActionButtonsVisible(bool bVisible)
 
 	if (bVisible)
 	{
-		B_Reset.SetPosition(0.155,0.20,0.090,0.045);
-		B_Unload.SetPosition(0.245,0.20,0.090,0.045);
-		B_Prestige.SetPosition(0.335,0.20,0.090,0.045);
+		B_Reset.SetPosition(0.095,0.820,0.118,0.045);
+		B_Unload.SetPosition(0.218,0.820,0.118,0.045);
+		B_Prestige.SetPosition(0.341,0.820,0.118,0.045);
 	}
 	else
 	{
@@ -701,6 +938,10 @@ final function Ext_PerkBase ResolveDisplayPerk()
 	M = PC.ActivePerkManager;
 	if (M==None)
 		return None;
+	if (M.UserPerks.Length==0)
+		M.InitPerks();
+	if (M.UserPerks.Length==0)
+		return None;
 
 	if (DisplayPerk!=None)
 	{
@@ -714,8 +955,14 @@ final function Ext_PerkBase ResolveDisplayPerk()
 	{
 		for (i=0; i<M.UserPerks.Length; ++i)
 			if (M.UserPerks[i].Class==EPRI.ECurrentPerk)
+			{
+				if (M.CurrentPerk==None)
+					M.CurrentPerk = M.UserPerks[i];
 				return M.UserPerks[i];
+			}
 	}
+	if (M.CurrentPerk!=None)
+		return M.CurrentPerk;
 	if (M.UserPerks.Length>0)
 		return M.UserPerks[0];
 	return None;
@@ -723,33 +970,34 @@ final function Ext_PerkBase ResolveDisplayPerk()
 
 final function DrawSkillsPanel(float W, float H)
 {
-	local float X,Y,PW,PH,Sc;
+	local float X,Y,PW,PH,Sc,HintW,HintH,HintScale;
 
 	X = W * 0.080;
-	Y = H * 0.16;
+	Y = H * 0.175;
 	PW = W * 0.395;
-	PH = H * 0.70;
+	PH = H * 0.735;
 
-	Canvas.SetDrawColor(34,34,38,105);
-	Canvas.SetPos(X,Y);
-	Owner.CurrentStyle.DrawWhiteBox(PW,PH);
-	Canvas.SetDrawColor(82,55,142,205);
-	Canvas.SetPos(X,Y);
-	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
-	Canvas.SetPos(X,Y+PH-4.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
-	Canvas.SetPos(X+PW-4.f,Y);
-	Owner.CurrentStyle.DrawWhiteBox(4.f,PH);
+	DrawPanelFrame(X,Y,PW,PH,135,30,38,118);
 
 	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	Canvas.SetDrawColor(230,220,248,255);
-	Canvas.SetPos(X+8.f,Y+8.f);
+	Canvas.SetDrawColor(246,242,230,255);
+	Canvas.SetPos(X+14.f,Y+11.f);
 	Canvas.DrawText("SKILLS",,Sc,Sc);
-	Canvas.SetDrawColor(155,140,190,165);
-	Canvas.SetPos(X+8.f,Y+44.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW*0.92,1.f);
+	if (PerkUISkillHintText=="")
+		PerkUISkillHintText = "Hovering reveals mouse-hover trigger info.";
+	if (PerkUISkillHintText!="")
+	{
+		Canvas.TextSize(PerkUISkillHintText,HintW,HintH,Sc,Sc);
+		HintScale = FMin(1.f,(PW*0.48)/HintW);
+		Canvas.SetDrawColor(246,242,230,235);
+		Canvas.SetPos(X+PW-(HintW*HintScale)-14.f,Y+11.f);
+		Canvas.DrawText(PerkUISkillHintText,,Sc*HintScale,Sc*HintScale);
+	}
+	Canvas.SetDrawColor(122,104,94,170);
+	Canvas.SetPos(X+14.f,Y+39.f);
+	Owner.CurrentStyle.DrawWhiteBox(PW-28.f,1.f);
 
-	if (DisplayPerk==None || !DisplayPerk.bPerkNetReady)
+	if (!IsDisplayPerkUsable())
 	{
 		SetStatButtonsVisible(false);
 		DrawPerkLoadingLine(X+14.f,Y+62.f);
@@ -757,144 +1005,20 @@ final function DrawSkillsPanel(float W, float H)
 	}
 }
 
-final function DrawBonusPanel(float W, float H)
+final function DrawPanelFrame(float X, float Y, float PW, float PH, byte AccentR, byte AccentG, byte AccentB, byte FillAlpha)
 {
-	local float X,Y,PW,PH,Sc,RowY,ColX[2],LineH,TextX,SurvY;
-	local int i,Col,Row,MaxRows,BonusCount;
-	local string S;
-
-	X = W * 0.50;
-	Y = H * 0.16;
-	PW = W * 0.405;
-	PH = H * 0.70;
-
-	Canvas.SetDrawColor(34,34,38,90);
+	Canvas.SetDrawColor(18,20,25,FillAlpha);
 	Canvas.SetPos(X,Y);
 	Owner.CurrentStyle.DrawWhiteBox(PW,PH);
-	Canvas.SetDrawColor(82,55,142,205);
+	Canvas.SetDrawColor(AccentR,AccentG,AccentB,225);
 	Canvas.SetPos(X,Y);
 	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
 	Canvas.SetPos(X,Y+PH-4.f);
 	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
-	Canvas.SetPos(X, Y);
+	Canvas.SetPos(X,Y);
 	Owner.CurrentStyle.DrawWhiteBox(4.f,PH);
 	Canvas.SetPos(X+PW-4.f,Y);
 	Owner.CurrentStyle.DrawWhiteBox(4.f,PH);
-
-	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	Canvas.SetDrawColor(230,220,248,255);
-	Canvas.SetPos(X+18.f,Y+10.f);
-	Canvas.DrawText("PERK BONUSES",,Sc,Sc);
-
-	Canvas.SetDrawColor(155,140,190,165);
-	Canvas.SetPos(X+18.f,Y+34.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW*0.30,1.f);
-
-	if (DisplayPerk==None || !DisplayPerk.bPerkNetReady)
-	{
-		SetGrenadeButtonsVisible(false);
-		DrawPerkLoadingLine(X+18.f,Y+54.f);
-		return;
-	}
-
-	SetGrenadeButtonsVisible(false);
-	ColX[0] = X + 34.f;
-	ColX[1] = X + PW * 0.50;
-	LineH = FMax((PH * 0.28) / 5.f,18.f);
-	MaxRows = 10;
-	BonusCount = 0;
-
-	for (i=0; i<DisplayPerk.PerkStats.Length && BonusCount<MaxRows; ++i)
-	{
-		if (IsSurvivabilityBonusStat(DisplayPerk.PerkStats[i].StatType))
-			continue;
-
-		Col = BonusCount / 5;
-		Row = BonusCount % 5;
-		RowY = Y + 46.f + Row * LineH;
-		TextX = ColX[Col];
-		S = GetBonusStatLine(i);
-		Canvas.SetDrawColor(232,224,242,245);
-		Canvas.SetPos(TextX,RowY);
-		Canvas.DrawText(S,,Sc,Sc);
-		++BonusCount;
-	}
-
-	SurvY = Y + PH*0.49;
-	Canvas.SetDrawColor(82,55,142,205);
-	Canvas.SetPos(X,SurvY);
-	Owner.CurrentStyle.DrawWhiteBox(PW,3.f);
-
-	Canvas.SetDrawColor(230,220,248,255);
-	Canvas.SetPos(X+18.f,SurvY+12.f);
-	Canvas.DrawText("SURVIVABILITY",,Sc,Sc);
-	Canvas.SetDrawColor(155,140,190,165);
-	Canvas.SetPos(X+18.f,SurvY+36.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW*0.34,1.f);
-
-	DrawSurvivabilityLine(X+34.f,SurvY+42.f,"Health",FindStatEffect('Health',true));
-	DrawSurvivabilityLine(X+PW*0.50,SurvY+42.f,"Armor",FindStatEffect('Armor',true));
-	DrawElementalReductionLine(X+34.f,SurvY+66.f);
-	DrawDamageReductionLine(X+PW*0.50,SurvY+66.f);
-}
-
-final function DrawSurvivabilityLine(float X, float Y, string Label, float Value)
-{
-	local float Sc;
-	local string S;
-
-	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	S = Label$": "$ChopExtraDigits(Value)$"%";
-	Canvas.SetDrawColor(232,224,242,245);
-	Canvas.SetPos(X,Y);
-	Canvas.DrawText(S,,Sc,Sc);
-}
-
-final function bool IsSurvivabilityBonusStat(name StatType)
-{
-	switch (StatType)
-	{
-	case 'Health':
-	case 'Armor':
-	case 'KnockDown':
-	case 'AllDmg':
-	case 'BossDamageReduction':
-	case 'EliteDamageReduction':
-		return true;
-	}
-	return false;
-}
-
-final function DrawElementalReductionLine(float X, float Y)
-{
-	local float Sc;
-	local string S;
-
-	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	S = "Fire "$ChopExtraDigits(FindStatEffect('FireDmg',true))$"%";
-	S = S$", Sonic "$ChopExtraDigits(FindStatEffect('SonicDmg',true))$"%";
-	Canvas.SetDrawColor(232,224,242,245);
-	Canvas.SetPos(X,Y);
-	Canvas.DrawText(S,,Sc,Sc);
-	S = "Poison "$ChopExtraDigits(FindStatEffect('PoisonDmg',true))$"%";
-	Canvas.SetPos(X,Y+20.f);
-	Canvas.DrawText(S,,Sc,Sc);
-}
-
-final function DrawDamageReductionLine(float X, float Y)
-{
-	local float Sc;
-	local string S;
-
-	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	S = "Zed "$ChopExtraDigits(FindStatEffect('AllDmg',true))$"%";
-	S = S$", Boss "$ChopExtraDigits(FindStatEffect('BossDamageReduction',true))$"%";
-	Canvas.SetDrawColor(232,224,242,245);
-	Canvas.SetPos(X,Y);
-	Canvas.DrawText(S,,Sc,Sc);
-	S = "Elite "$ChopExtraDigits(FindStatEffect('EliteDamageReduction',true))$"%";
-	Canvas.SetPos(X,Y+20.f);
-	Canvas.DrawText(S,,Sc,Sc);
 }
 
 final function DrawPerkLoadingLine(float X, float Y)
@@ -911,32 +1035,21 @@ final function DrawTraitPanel(float W, float H)
 {
 	local float X,Y,PW,PH,Sc;
 
-	X = W * 0.080;
-	Y = H * 0.18;
-	PW = W * 0.825;
-	PH = H * 0.67;
+	X = W * 0.500;
+	Y = H * 0.175;
+	PW = W * 0.405;
+	PH = H * 0.735;
 
-	Canvas.SetDrawColor(34,34,38,105);
-	Canvas.SetPos(X,Y);
-	Owner.CurrentStyle.DrawWhiteBox(PW,PH);
-	Canvas.SetDrawColor(82,55,142,205);
-	Canvas.SetPos(X,Y);
-	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
-	Canvas.SetPos(X,Y+PH-4.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW,4.f);
-	Canvas.SetPos(X,Y);
-	Owner.CurrentStyle.DrawWhiteBox(4.f,PH);
-	Canvas.SetPos(X+PW-4.f,Y);
-	Owner.CurrentStyle.DrawWhiteBox(4.f,PH);
+	DrawPanelFrame(X,Y,PW,PH,135,30,38,112);
 
 	Canvas.Font = Owner.CurrentStyle.PickFont(0,Sc);
-	Canvas.SetDrawColor(230,220,248,255);
+	Canvas.SetDrawColor(246,242,230,255);
 	Canvas.SetPos(X+12.f,Y+10.f);
-	Canvas.DrawText("TRAITS",,Sc,Sc);
+	Canvas.DrawText("TRAIT LIST",,Sc,Sc);
 
-	Canvas.SetDrawColor(155,140,190,165);
+	Canvas.SetDrawColor(122,104,94,170);
 	Canvas.SetPos(X+12.f,Y+34.f);
-	Owner.CurrentStyle.DrawWhiteBox(PW*0.18,1.f);
+	Owner.CurrentStyle.DrawWhiteBox(PW-24.f,1.f);
 }
 
 function DrawRailPerkInfo(Canvas C, int Index, float YOffset, float Height, float Width, bool bFocus)
@@ -1021,10 +1134,6 @@ function SwitchedRailPerk(int Index, bool bRight, int MouseX, int MouseY)
 
 final function UpdateTraits()
 {
-	local int i;
-	local class<Ext_TraitBase> TC;
-	local string S;
-
 	if (TraitsList==None)
 		return;
 
@@ -1036,56 +1145,114 @@ final function UpdateTraits()
 	LastTraitPerkPoints = 0;
 	LastTraitCount = 0;
 
-	if (DisplayPerk==None || !DisplayPerk.bPerkNetReady)
+	if (!IsDisplayPerkUsable())
 		return;
 
 	LastTraitPerkClass = DisplayPerk.Class;
 	LastTraitPerkPoints = DisplayPerk.CurrentSP;
 	LastTraitCount = DisplayPerk.PerkTraits.Length;
 
+	if (ActiveTraitCategory=='All')
+	{
+		AddAllVisibleTraitsByCategory();
+	}
+	else
+	{
+		AddVisibleTraitsForCategory(ActiveTraitCategory);
+	}
+}
+
+final function AddAllVisibleTraitsByCategory()
+{
+	local array<int> AddedTraitIndexes;
+
+	AddVisibleTraitsForCategoryUnique('Combat',AddedTraitIndexes);
+	AddVisibleTraitsForCategoryUnique('Support',AddedTraitIndexes);
+	AddVisibleTraitsForCategoryUnique('Utility',AddedTraitIndexes);
+	AddVisibleTraitsForCategoryUnique('Zed',AddedTraitIndexes);
+}
+
+final function AddVisibleTraitsForCategory(name CategoryName)
+{
+	local array<int> AddedTraitIndexes;
+
+	AddVisibleTraitsForCategoryUnique(CategoryName,AddedTraitIndexes);
+}
+
+final function AddVisibleTraitsForCategoryUnique(name CategoryName, out array<int> AddedTraitIndexes)
+{
+	local int i;
+	local class<Ext_TraitBase> TC;
+
 	for (i=0; i<DisplayPerk.PerkTraits.Length; ++i)
 	{
 		TC = DisplayPerk.PerkTraits[i].TraitType;
-		if (TC==None)
-			continue;
-		if (!ShouldShowTrait(TC))
-			continue;
-
-		if (DisplayPerk.PerkTraits[i].CurrentLevel>=TC.Default.NumLevels)
-			S = "MAX\nN/A";
-		else
+		if (TC!=None && ShouldShowTraitInCategory(TC,CategoryName) && !HasAddedTraitIndex(AddedTraitIndexes,i))
 		{
-			S = DisplayPerk.PerkTraits[i].CurrentLevel$"/"$TC.Default.NumLevels$"\n";
-			if (TC.Static.MeetsRequirements(DisplayPerk.PerkTraits[i].CurrentLevel,DisplayPerk))
-				S $= string(TC.Static.GetTraitCost(DisplayPerk.PerkTraits[i].CurrentLevel));
-			else S $= "N/A";
+			AddTraitLine(i,TC);
+			AddedTraitIndexes.AddItem(i);
 		}
-		TraitsList.AddLine(TC.Default.TraitName$"\n"$S,i);
-		TraitsList.ToolTip.AddItem(TC.Static.GetTooltipInfo());
 	}
+}
+
+final function bool HasAddedTraitIndex(array<int> AddedTraitIndexes, int TraitIndex)
+{
+	local int i;
+
+	for (i=0; i<AddedTraitIndexes.Length; ++i)
+		if (AddedTraitIndexes[i]==TraitIndex)
+			return true;
+	return false;
+}
+
+final function AddTraitLine(int TraitIndex, class<Ext_TraitBase> TC)
+{
+	local string S;
+
+	if (TC==None || DisplayPerk==None || TraitIndex<0 || TraitIndex>=DisplayPerk.PerkTraits.Length)
+		return;
+
+	if (DisplayPerk.PerkTraits[TraitIndex].CurrentLevel>=TC.Default.NumLevels)
+		S = "MAX\nN/A";
+	else
+	{
+		S = DisplayPerk.PerkTraits[TraitIndex].CurrentLevel$"/"$TC.Default.NumLevels$"\n";
+		if (TC.Static.MeetsRequirements(DisplayPerk.PerkTraits[TraitIndex].CurrentLevel,DisplayPerk))
+			S $= string(TC.Static.GetTraitCost(DisplayPerk.PerkTraits[TraitIndex].CurrentLevel));
+		else S $= "N/A";
+	}
+	TraitsList.AddLine(TC.Default.TraitName$"\n"$S,TraitIndex);
+	TraitsList.ToolTip.AddItem(TC.Static.GetTooltipInfo());
 }
 
 final function bool ShouldShowTrait(class<Ext_TraitBase> TC)
 {
+	if (ActiveTraitCategory=='All')
+		return true;
+	return ShouldShowTraitInCategory(TC,ActiveTraitCategory);
+}
+
+final function bool ShouldShowTraitInCategory(class<Ext_TraitBase> TC, name CategoryName)
+{
 	local string N,T;
 
-	if (ActiveTraitCategory=='All' || TC==None)
+	if (TC==None)
 		return true;
 
 	N = Caps(string(TC.Name));
 	T = Caps(TC.Default.TraitName);
 
-	if (ActiveTraitCategory=='Zed')
+	if (CategoryName=='Zed')
 		return IsMonsterTrait(TC);
 
-	if (ActiveTraitCategory=='Utility')
+	if (CategoryName=='Utility')
 		return (!IsMonsterTrait(TC) && (InStr(N,"BUNNY")>=0 || InStr(N,"GHOST")>=0 || InStr(N,"NIGHT")>=0 || InStr(N,"TACTIC")>=0 || InStr(N,"UNCLOAK")>=0 || InStr(N,"UNGRAB")>=0 || InStr(N,"DOOR")>=0 || InStr(N,"DURACELL")>=0 || InStr(N,"WELD")>=0 || InStr(N,"EXPLOSIVE")>=0 || InStr(N,"DEMOAOE")>=0 || InStr(N,"DEMONUKE")>=0 || InStr(N,"DEMOREACTIVE")>=0 || InStr(T,"DETECTION")>=0 || InStr(T,"EXPLOSIVE")>=0));
 
-	if (ActiveTraitCategory=='Support')
+	if (CategoryName=='Support')
 		return (!IsMonsterTrait(TC) && (InStr(N,"CARRY")>=0 || InStr(N,"AMMOREG")>=0 || InStr(N,"ARMOR")>=0 || InStr(N,"HEALTH")>=0 || InStr(N,"KNOCKBACK")>=0 || InStr(N,"MEDBOOST")>=0 || InStr(N,"MEDSHIELD")>=0 || InStr(N,"RETALI")>=0 || InStr(N,"REDEMPTION")>=0 || InStr(N,"VAMPIRE")>=0 || InStr(N,"SPARTAN")>=0 || InStr(N,"RAGDOLL")>=0 || InStr(N,"SUPPLY")>=0));
 
-	if (ActiveTraitCategory=='Combat')
-		return !ShouldShowTraitAsUtilitySupportOrZed(TC);
+	if (CategoryName=='Combat')
+		return !(ShouldShowTraitInCategory(TC,'Zed') || ShouldShowTraitInCategory(TC,'Utility') || ShouldShowTraitInCategory(TC,'Support'));
 
 	return true;
 }
@@ -1103,18 +1270,7 @@ final function bool IsMonsterTrait(class<Ext_TraitBase> TC)
 
 final function bool ShouldShowTraitAsUtilitySupportOrZed(class<Ext_TraitBase> TC)
 {
-	local name OldCategory;
-	local bool bResult;
-
-	OldCategory = ActiveTraitCategory;
-	ActiveTraitCategory = 'Zed';
-	bResult = ShouldShowTrait(TC);
-	ActiveTraitCategory = 'Utility';
-	bResult = bResult || ShouldShowTrait(TC);
-	ActiveTraitCategory = 'Support';
-	bResult = bResult || ShouldShowTrait(TC);
-	ActiveTraitCategory = OldCategory;
-	return bResult;
+	return (ShouldShowTraitInCategory(TC,'Zed') || ShouldShowTraitInCategory(TC,'Utility') || ShouldShowTraitInCategory(TC,'Support'));
 }
 
 function ShowTraitInfo(KFGUI_ListItem Item, int Row, bool bRight, bool bDblClick)
@@ -1144,40 +1300,6 @@ final function DrawSmallBonusButton(float X, float Y, float BW, float BH, string
 	Canvas.TextSize(S,XL,YL,Sc,Sc);
 	Canvas.SetPos(X+(BW-XL)*0.5,Y+(BH-YL)*0.5);
 	Canvas.DrawText(S,,Sc,Sc);
-}
-
-final function string GetBonusStatLine(int StatIndex)
-{
-	return GetShortStatUIStr(DisplayPerk.PerkStats[StatIndex].StatType)$": "$ChopExtraDigits(GetStatEffectByIndex(StatIndex,true))$"%";
-}
-
-final function float GetStatEffectByIndex(int StatIndex, optional bool bIncludePending)
-{
-	local ExtPlayerController PC;
-	local int PendingAmount;
-
-	if (DisplayPerk==None || StatIndex<0 || StatIndex>=DisplayPerk.PerkStats.Length)
-		return 0.f;
-	if (bIncludePending)
-	{
-		PC = ExtPlayerController(GetPlayer());
-		if (PC!=None)
-			PendingAmount = PC.GetPendingStatBuyAmount(DisplayPerk.Class,StatIndex);
-	}
-	return (DisplayPerk.PerkStats[StatIndex].CurrentValue + PendingAmount) * DisplayPerk.PerkStats[StatIndex].Progress;
-}
-
-final function float FindStatEffect(name StatType, optional bool bIncludePending)
-{
-	local int i;
-
-	if (DisplayPerk==None)
-		return 0.f;
-
-	for (i=0; i<DisplayPerk.PerkStats.Length; ++i)
-		if (DisplayPerk.PerkStats[i].StatType==StatType)
-			return GetStatEffectByIndex(i,bIncludePending);
-	return 0.f;
 }
 
 final function string GetShortStatUIStr(name StatType)
@@ -1241,11 +1363,13 @@ final function string ChopExtraDigits(float Value)
 
 defaultproperties
 {
+	bPerkUIDebug=true
+
 	Begin Object Class=KFGUI_ZvampPressButton Name=ResetPerkButton
 		ID="Reset"
-		XPosition=0.155
-		YPosition=0.20
-		XSize=0.090
+		XPosition=0.095
+		YPosition=0.820
+		XSize=0.118
 		YSize=0.045
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
@@ -1255,9 +1379,9 @@ defaultproperties
 
 	Begin Object Class=KFGUI_ZvampPressButton Name=UnloadPerkButton
 		ID="Unload"
-		XPosition=0.245
-		YPosition=0.20
-		XSize=0.090
+		XPosition=0.218
+		YPosition=0.820
+		XSize=0.118
 		YSize=0.045
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
@@ -1267,9 +1391,9 @@ defaultproperties
 
 	Begin Object Class=KFGUI_ZvampPressButton Name=PrestigePerkButton
 		ID="Prestige"
-		XPosition=0.335
-		YPosition=0.20
-		XSize=0.090
+		XPosition=0.341
+		YPosition=0.820
+		XSize=0.118
 		YSize=0.045
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
@@ -1279,21 +1403,32 @@ defaultproperties
 
 	Begin Object Class=KFGUI_ZvampPressButton Name=ConfigureButton
 		ID="Configure"
-		XPosition=0.080
-		YPosition=0.865
-		XSize=0.395
-		YSize=0.055
+		XPosition=0.095
+		YPosition=0.875
+		XSize=0.364
+		YSize=0.045
 		OnClickLeft=ButtonClicked
 		OnClickRight=ButtonClicked
 	End Object
 	Components.Add(ConfigureButton)
 
+	Begin Object Class=KFGUI_ZvampPressButton Name=OpenTraitMenuButton
+		ID="OTM"
+		XPosition=0.470
+		YPosition=0.425
+		XSize=0.030
+		YSize=0.180
+		OnClickLeft=ButtonClicked
+		OnClickRight=ButtonClicked
+	End Object
+	Components.Add(OpenTraitMenuButton)
+
 	Begin Object Class=KFGUI_ComponentList Name=PerkStats
 		ID="Stats"
-		XPosition=0.085
-		YPosition=0.265
+		XPosition=0.095
+		YPosition=0.275
 		XSize=0.370
-		YSize=0.495
+		YSize=0.525
 		ListItemsPerPage=10
 		BackgroundColor=(R=8,G=5,B=18,A=0)
 		bDrawBackground=false

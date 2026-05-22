@@ -387,6 +387,8 @@ function UpdateGroundSpeed()
 	if (Role < ROLE_Authority)
 		return;
 
+	`log("[ZvampSpeed] update "$PlayerReplicationInfo.PlayerName@"boost="$ZvampextTraderSpeedBoostMod@"oldGround="$GroundSpeed@"oldSprint="$SprintSpeed);
+
 	InvM = KFInventoryManager(InvManager);
 	HealthMod = (InvM != None) ? InvM.GetEncumbranceSpeedMod() : 1.f * (1.f - LowHealthSpeedPenalty);
 	if (BHopAccelSpeed>0)
@@ -409,6 +411,7 @@ function UpdateGroundSpeed()
 		GroundSpeed *= ZvampextTraderSpeedBoostMod;
 		SprintSpeed *= ZvampextTraderSpeedBoostMod;
 	}
+	`log("[ZvampSpeed] updated "$PlayerReplicationInfo.PlayerName@"ground="$GroundSpeed@"sprint="$SprintSpeed);
 }
 
 function SetZvampextTraderSpeedBoost(float SpeedBoostMod)
@@ -420,6 +423,7 @@ function SetZvampextTraderSpeedBoost(float SpeedBoostMod)
 	}
 
 	ZvampextTraderSpeedBoostMod = SpeedBoostMod;
+	`log("[ZvampSpeed] set "$PlayerReplicationInfo.PlayerName@"boost="$SpeedBoostMod);
 	UpdateGroundSpeed();
 }
 

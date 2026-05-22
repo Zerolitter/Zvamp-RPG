@@ -177,39 +177,28 @@ function PreDraw()
 
 final function DrawCardGrid()
 {
-	local int i,n,CardsPerRow,FocusCard,Level;
-	local float Gap,CardW,CardH,X,Y,TextY,IconSize,MouseX,MouseY,LabelH;
+	local int i,n;
+	local float Y,RowH,IconSize,MouseY,NameX,StatusX,BuyX,BuyW,BuyH,XL,YL;
 	local KFGUI_ListItem C;
 	local class<Ext_TraitBase> TC;
 	local Texture2D Icon;
-	local string Title,CostText,ReqText;
-	local bool bReqBlocked;
+	local string Title,StatusText,BuyText;
+	local bool bSelected,bFocusedRow;
+	local byte bCanBuy;
+	local byte StatusR,StatusG,StatusB;
 
 	Canvas.DrawColor = BackgroundColor;
 	Canvas.SetPos(0.f,0.f);
 	Owner.CurrentStyle.DrawWhiteBox(CompPos[2],CompPos[3]);
 
-	CardsPerRow = 4;
-	if (CompPos[2]>760.f)
-		CardsPerRow = 5;
-	else if (CompPos[2]<520.f)
-		CardsPerRow = 3;
-
-	Gap = 8.f;
-	CardW = (CompPos[2] - Gap*float(CardsPerRow+1)) / float(CardsPerRow);
-	if (bCardMode)
-		CardH = FMax((CompPos[3] - Gap*4.f) / 3.f,58.f);
-	else CardH = FMax(CardW*0.54f,74.f);
-	ListItemsPerPage = Max(CardsPerRow * Max(int(CompPos[3] / (CardH+Gap)),1),CardsPerRow);
+	RowH = FMax(TextHeight*2.25f,42.f);
+	ListItemsPerPage = Max(int(CompPos[3] / RowH),1);
+	RowH = CompPos[3] / ListItemsPerPage;
 	UpdateListVis();
 
 	FocusMouseItem = -1;
-	FocusCard = -1;
 	if (bClickable && bFocused)
-	{
-		MouseX = Owner.MousePosition.X - CompPos[0];
 		MouseY = Owner.MousePosition.Y - CompPos[1];
-	}
 
 	n = ScrollBar.CurrentScroll;
 	i = 0;
@@ -217,65 +206,46 @@ final function DrawCardGrid()
 		if ((i++)==n)
 			break;
 
+	NameX = RowH*0.95f;
+	BuyW = FMin(92.f,CompPos[2]*0.21f);
+	BuyH = FMin(RowH*0.62f,30.f);
+	BuyX = CompPos[2]-BuyW-10.f;
+	StatusX = BuyX-106.f;
 	for (i=0; i<ListItemsPerPage && C!=None; ++i)
 	{
-		X = Gap + float(i % CardsPerRow) * (CardW + Gap);
-		Y = Gap + float(i / CardsPerRow) * (CardH + Gap);
-		if ((Y+CardH)>CompPos[3])
-			break;
-
-		if (bClickable && bFocused && MouseX>=X && MouseX<=(X+CardW) && MouseY>=Y && MouseY<=(Y+CardH))
+		StatusR = 210;
+		StatusG = 195;
+		StatusB = 230;
+		bCanBuy = 0;
+		Y = float(i) * RowH;
+		if (bClickable && bFocused && MouseY>=Y && MouseY<=(Y+RowH))
 		{
 			FocusMouseItem = n;
-			FocusCard = i;
 		}
 
-		Canvas.SetPos(X,Y);
-		if (SelectedRowIndex==n)
-			Canvas.SetDrawColor(80,48,132,255);
-		else if (FocusCard==i)
-			Canvas.SetDrawColor(58,38,118,255);
-		else Canvas.SetDrawColor(14,11,22,255);
-		Owner.CurrentStyle.DrawWhiteBox(CardW,CardH);
-
-		Canvas.SetPos(X+2,Y+2);
-		Canvas.SetDrawColor(48,48,52,220);
-		Owner.CurrentStyle.DrawWhiteBox(CardW-4,CardH*0.56f);
+		bSelected = (SelectedRowIndex==n);
+		bFocusedRow = (FocusMouseItem==n);
+		if (bSelected)
+			Canvas.SetDrawColor(60,34,104,235);
+		else if (bFocusedRow)
+			Canvas.SetDrawColor(34,28,58,230);
+		else Canvas.SetDrawColor(10,12,19,205);
+		Canvas.SetPos(0.f,Y);
+		Owner.CurrentStyle.DrawWhiteBox(CompPos[2],RowH-2.f);
+		Canvas.SetDrawColor(56,48,76,175);
+		Canvas.SetPos(0.f,Y+RowH-2.f);
+		Owner.CurrentStyle.DrawWhiteBox(CompPos[2],1.f);
 
 		if (DisplayPerk!=None && C.Value>=0 && C.Value<DisplayPerk.PerkTraits.Length)
 		{
 			TC = DisplayPerk.PerkTraits[C.Value].TraitType;
-			Level = DisplayPerk.PerkTraits[C.Value].CurrentLevel;
 			if (TC!=None)
 			{
 				Title = TrimTraitTitle(TC.Default.TraitName);
 				Icon = ResolveTraitIcon(TC);
 				if (Icon==None)
 					Icon = DisplayPerk.PerkIcon;
-
-				if (Level>=TC.Default.NumLevels)
-				{
-					CostText = "N/A";
-				}
-				else
-				{
-					if (TC.Static.MeetsRequirements(Level,DisplayPerk))
-						CostText = string(TC.Static.GetTraitCost(Level));
-					else CostText = "N/A";
-				}
-				if (TC.Default.TraitGroup==class'Ext_TGroupRegen')
-				{
-					ReqText = "R "$GetRegenTraitCount()$"/"$class'Ext_TGroupRegen'.Static.GetMaxLimit(DisplayPerk);
-					bReqBlocked = class'Ext_TGroupRegen'.Static.GroupLimited(DisplayPerk,TC);
-				}
-				else if (TC.Default.MinLevel>0 && DisplayPerk.CurrentLevel<TC.Default.MinLevel)
-				{
-					ReqText = "Lv "$TC.Default.MinLevel;
-					bReqBlocked = true;
-				}
-				else if (Level<TC.Default.NumLevels)
-					ReqText = "Upg "$(Level+1);
-				else ReqText = "Done";
+				StatusText = GetLiveStatusText(C.Value,StatusR,StatusG,StatusB,bCanBuy);
 			}
 		}
 		if (Title=="")
@@ -283,44 +253,185 @@ final function DrawCardGrid()
 
 		if (Icon!=None)
 		{
-			IconSize = FMin(CardW*0.44f,CardH*0.38f);
-			Canvas.SetPos(X+(CardW-IconSize)*0.5f,Y+5.f);
+			IconSize = FMin(RowH*0.70f,34.f);
+			Canvas.SetPos(10.f,Y+(RowH-IconSize)*0.5f);
 			Canvas.SetDrawColor(255,255,255,220);
 			Canvas.DrawRect(IconSize,IconSize,Icon);
 		}
 
-		Canvas.SetPos(X+CardW-34.f,Y+4.f);
-		Canvas.SetDrawColor(74,22,98,240);
-		Owner.CurrentStyle.DrawWhiteBox(30.f,19.f);
-		Canvas.SetPos(X+CardW-31.f,Y+5.f);
-		Canvas.SetDrawColor(255,255,255,255);
-		Canvas.DrawText(CostText,,TextScaler,TextScaler,LineFontInfo);
-
-		Canvas.SetPos(X+CardW-43.f,Y+24.f);
-		if (bReqBlocked)
-			Canvas.SetDrawColor(210,32,42,255);
-		else Canvas.SetDrawColor(210,195,230,255);
-		Canvas.DrawText(ReqText,,TextScaler*0.78f,TextScaler*0.78f,LineFontInfo);
-
-		LabelH = CardH*0.38f;
-		Canvas.SetDrawColor(18,12,28,235);
-		Canvas.SetPos(X+2,Y+CardH-LabelH-2.f);
-		Owner.CurrentStyle.DrawWhiteBox(CardW-4,LabelH);
-
-		TextY = Y+CardH-LabelH+2.f;
-		Canvas.SetClip(CompPos[0]+X+CardW-6.f,CompPos[1]+Y+CardH-4.f);
-		Canvas.SetPos(X+5.f,TextY);
+		Canvas.SetClip(CompPos[0]+StatusX-8.f,CompPos[1]+Y+RowH);
+		Canvas.SetPos(NameX,Y+(RowH-TextHeight)*0.5f);
 		Canvas.SetDrawColor(245,235,245,255);
 		DrawStrClipped(Title);
+
+		Canvas.SetClip(CompPos[0]+BuyX-10.f,CompPos[1]+Y+RowH);
+		Canvas.SetDrawColor(StatusR,StatusG,StatusB,255);
+		Canvas.SetPos(StatusX,Y+(RowH-TextHeight)*0.5f);
+		Canvas.DrawText(StatusText,,TextScaler,TextScaler,LineFontInfo);
+
+		Canvas.SetPos(BuyX,Y+(RowH-BuyH)*0.5f);
+		if (bCanBuy!=0)
+			Canvas.SetDrawColor(74,44,142,245);
+		else Canvas.SetDrawColor(32,30,44,220);
+		Owner.CurrentStyle.DrawWhiteBox(BuyW,BuyH);
+		Canvas.SetDrawColor((bCanBuy!=0 ? 150 : 72),(bCanBuy!=0 ? 88 : 62),(bCanBuy!=0 ? 220 : 92),210);
+		Canvas.SetPos(BuyX,Y+(RowH-BuyH)*0.5f);
+		Owner.CurrentStyle.DrawWhiteBox(BuyW,2.f);
+		BuyText = "BUY";
+		if (bCanBuy==0)
+			BuyText = "-";
+		Canvas.TextSize(BuyText,XL,YL,TextScaler,TextScaler);
+		Canvas.SetPos(BuyX+(BuyW-XL)*0.5f,Y+(RowH-YL)*0.5f);
+		Canvas.SetDrawColor((bCanBuy!=0 ? 245 : 130),(bCanBuy!=0 ? 235 : 126),(bCanBuy!=0 ? 255 : 145),255);
+		Canvas.DrawText(BuyText,,TextScaler,TextScaler,LineFontInfo);
 
 		++n;
 		C = C.Next;
 		Title = "";
-		CostText = "";
-		ReqText = "";
-		bReqBlocked = false;
+		StatusText = "";
+		bCanBuy = 0;
 		Icon = None;
 	}
+	Canvas.SetClip(CompPos[0]+CompPos[2],CompPos[1]+CompPos[3]);
+}
+
+function InternalClickedItem(int Index, bool bRight, int MouseX, int MouseY)
+{
+	local KFGUI_ListItem Item;
+
+	SelectedRowIndex = Index;
+	Item = GetFromIndex(Index);
+	if (Item==None)
+		return;
+
+	if (bRight)
+	{
+		OnSelectedRow(Item,Index,true,false);
+		return;
+	}
+
+	if (MouseX>=GetBuyHitX())
+		TryBuyTrait(Item.Value);
+}
+
+function InternalDblClickedItem(int Index, bool bRight, int MouseX, int MouseY)
+{
+	local KFGUI_ListItem Item;
+
+	SelectedRowIndex = Index;
+	Item = GetFromIndex(Index);
+	if (Item!=None)
+		OnSelectedRow(Item,Index,bRight,true);
+}
+
+final function float GetBuyHitX()
+{
+	return CompPos[2]-FMin(92.f,CompPos[2]*0.21f)-12.f;
+}
+
+final function TryBuyTrait(int TraitIndex)
+{
+	local class<Ext_TraitBase> TC;
+	local byte R,G,B;
+	local byte bCanBuy;
+	local ExtPlayerController PC;
+
+	if (DisplayPerk==None || TraitIndex<0 || TraitIndex>=DisplayPerk.PerkTraits.Length)
+		return;
+	PC = ExtPlayerController(GetPlayer());
+	if (PC==None)
+		return;
+	TC = DisplayPerk.PerkTraits[TraitIndex].TraitType;
+	if (TC==None)
+		return;
+	GetLiveStatusText(TraitIndex,R,G,B,bCanBuy);
+	if (bCanBuy!=0)
+		PC.BoughtTrait(DisplayPerk.Class,TC);
+}
+
+final function string GetLiveStatusText(int TraitIndex, out byte OutR, out byte OutG, out byte OutB, out byte bCanBuy)
+{
+	local class<Ext_TraitBase> TC;
+	local int Level;
+
+	OutR = 210;
+	OutG = 195;
+	OutB = 230;
+	bCanBuy = 0;
+	if (DisplayPerk==None || TraitIndex<0 || TraitIndex>=DisplayPerk.PerkTraits.Length)
+		return "-";
+
+	TC = DisplayPerk.PerkTraits[TraitIndex].TraitType;
+	if (TC==None)
+		return "-";
+	Level = DisplayPerk.PerkTraits[TraitIndex].CurrentLevel;
+	if (Level>=TC.Default.NumLevels)
+	{
+		OutR = 155;
+		OutG = 235;
+		OutB = 140;
+		return "Done";
+	}
+	if (TC.Default.MinLevel>0 && DisplayPerk.CurrentLevel<TC.Default.MinLevel)
+	{
+		OutR = 255;
+		OutG = 210;
+		OutB = 95;
+		return "Lv "$TC.Default.MinLevel;
+	}
+	if (Level==0 && TC.Default.TraitGroup==class'Ext_TGroupRegen')
+		return GetRegenStatusText(TC,OutR,OutG,OutB,bCanBuy);
+	if (TC.Static.MeetsRequirements(Level,DisplayPerk) && TC.Static.GetTraitCost(Level)<=DisplayPerk.CurrentSP)
+	{
+		OutR = 245;
+		OutG = 235;
+		OutB = 245;
+		bCanBuy = 1;
+		return "Upg "$Level$"/"$TC.Default.NumLevels;
+	}
+	if (TC.Static.MeetsRequirements(Level,DisplayPerk))
+	{
+		OutR = 255;
+		OutG = 210;
+		OutB = 95;
+		return "Upg "$Level$"/"$TC.Default.NumLevels;
+	}
+	OutR = 235;
+	OutG = 65;
+	OutB = 72;
+	return "Locked";
+}
+
+final function string GetRegenStatusText(class<Ext_TraitBase> TC, out byte OutR, out byte OutG, out byte OutB, out byte bCanBuy)
+{
+	local int Used,Limit;
+	local bool bSlotAvailable;
+
+	Used = GetRegenTraitCount();
+	Limit = class'Ext_TGroupRegen'.Static.GetMaxLimit(DisplayPerk);
+	bSlotAvailable = !class'Ext_TGroupRegen'.Static.GroupLimited(DisplayPerk,TC);
+	if (bSlotAvailable)
+	{
+		OutR = 155;
+		OutG = 235;
+		OutB = 140;
+		if (TC.Static.GetTraitCost(0)<=DisplayPerk.CurrentSP && TC.Static.MeetsRequirements(0,DisplayPerk))
+			bCanBuy = 1;
+		else bCanBuy = 0;
+	}
+	else if ((Used>=1 && DisplayPerk.CurrentPrestige<1) || (Used>=2 && DisplayPerk.CurrentPrestige<5))
+	{
+		OutR = 235;
+		OutG = 65;
+		OutB = 72;
+	}
+	else
+	{
+		OutR = 255;
+		OutG = 210;
+		OutB = 95;
+	}
+	return "R "$Used$"/"$Limit;
 }
 
 final function int GetRegenTraitCount()
@@ -355,6 +466,10 @@ final function Texture2D ResolveTraitIcon(class<Ext_TraitBase> TC)
 	Icon = Texture2D(DynamicLoadObject("ServerExtTraitIcons."$string(TC.Name),class'Texture2D',true));
 	if (Icon==None)
 		Icon = Texture2D(DynamicLoadObject("ServerExtTraitIcons.TraitIcons."$string(TC.Name),class'Texture2D',true));
+	if (Icon==None)
+		Icon = Texture2D(DynamicLoadObject("SkillTraitIcons."$string(TC.Name),class'Texture2D',true));
+	if (Icon==None)
+		Icon = Texture2D(DynamicLoadObject("SkillTraitIcons.TraitIcons."$string(TC.Name),class'Texture2D',true));
 	if (Icon==None)
 		Icon = Texture2D(DynamicLoadObject("ServerExt_TraitIcons."$string(TC.Name),class'Texture2D',true));
 	if (Icon==None)

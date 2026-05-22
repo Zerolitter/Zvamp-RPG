@@ -42,6 +42,11 @@ function InitMenu()
 	Add25Button.ButtonText = "ADD 25";
 	Add100Button.ButtonText = "ADD 100";
 	CancelButton.ButtonText = "CANCEL";
+	BuyButton.ToolTip = "Queue this stat purchase. Use COMMIT SP on the perk screen to save it.";
+	Add5Button.ToolTip = "Queue 5 points or the maximum affordable amount.";
+	Add25Button.ToolTip = "Queue 25 points or the maximum affordable amount.";
+	Add100Button.ToolTip = "Queue 100 points or the maximum affordable amount.";
+	CancelButton.ToolTip = "Close without adding more queued points.";
 	AmountBox.OnTextChange = AmountChanged;
 	AmountBox.OnHitEnter = AmountHitEnter;
 
@@ -118,11 +123,12 @@ final function UpdateInfo()
 	else AmountBox.ValidateValue();
 
 	S = "Stat: #{9FF781}"$GetShortStatName()$"#{DEF}";
-	S $= "|Current: #{F3F781}"$MyPerk.PerkStats[StatIndex].CurrentValue$" / "$MyPerk.PerkStats[StatIndex].MaxValue$"#{DEF}";
-	S $= "|Available XP: #{F3F781}"$AvailableSP$"#{DEF}";
-	S $= "|Queued: #{F3F781}"$PendingAmount$"#{DEF}";
+	S $= "|Current points: #{F3F781}"$MyPerk.PerkStats[StatIndex].CurrentValue$" / "$MyPerk.PerkStats[StatIndex].MaxValue$"#{DEF}";
+	S $= "|Arrange XP after queue: #{F3F781}"$AvailableSP$"#{DEF}";
+	S $= "|Queued on this stat: #{F3F781}"$PendingAmount$"#{DEF}";
 	S $= "|Cost per point: #{F3F781}"$CostPerValue$"#{DEF}";
-	S $= "|Maximum buy now: #{F3F781}"$MaxBuyAmount$"#{DEF}";
+	S $= "|Can add now: #{F3F781}"$MaxBuyAmount$"#{DEF}";
+	S $= "|Purchases remain queued until COMMIT SP.";
 	InfoText.SetText(S);
 
 	RefreshBuyButton();
@@ -260,10 +266,10 @@ final function string GetShortStatName()
 
 defaultproperties
 {
-	XPosition=0.33
-	YPosition=0.27
-	XSize=0.34
-	YSize=0.42
+	XPosition=0.315
+	YPosition=0.235
+	XSize=0.37
+	YSize=0.48
 	bAlwaysTop=true
 	bOnlyThisFocus=true
 
@@ -272,14 +278,14 @@ defaultproperties
 		XPosition=0.06
 		YPosition=0.12
 		XSize=0.88
-		YSize=0.38
+		YSize=0.43
 	End Object
 	Components.Add(AmountInfo)
 
 	Begin Object Class=KFGUI_NumericBox Name=AmountInput
 		ID="Amount"
 		XPosition=0.32
-		YPosition=0.52
+		YPosition=0.58
 		XSize=0.36
 		YSize=0.08
 		MinValue=1
@@ -291,7 +297,7 @@ defaultproperties
 	Begin Object Class=KFGUI_Button Name=Add5AmountButton
 		ID="Add5"
 		XPosition=0.08
-		YPosition=0.66
+		YPosition=0.70
 		XSize=0.25
 		YSize=0.10
 		OnClickLeft=ButtonClicked
@@ -302,7 +308,7 @@ defaultproperties
 	Begin Object Class=KFGUI_Button Name=Add25AmountButton
 		ID="Add25"
 		XPosition=0.375
-		YPosition=0.66
+		YPosition=0.70
 		XSize=0.25
 		YSize=0.10
 		OnClickLeft=ButtonClicked
@@ -313,7 +319,7 @@ defaultproperties
 	Begin Object Class=KFGUI_Button Name=Add100AmountButton
 		ID="Add100"
 		XPosition=0.67
-		YPosition=0.66
+		YPosition=0.70
 		XSize=0.25
 		YSize=0.10
 		OnClickLeft=ButtonClicked
@@ -324,7 +330,7 @@ defaultproperties
 	Begin Object Class=KFGUI_Button Name=BuyAmountButton
 		ID="Buy"
 		XPosition=0.16
-		YPosition=0.82
+		YPosition=0.855
 		XSize=0.32
 		YSize=0.10
 		OnClickLeft=ButtonClicked
@@ -335,7 +341,7 @@ defaultproperties
 	Begin Object Class=KFGUI_Button Name=CancelAmountButton
 		ID="Cancel"
 		XPosition=0.52
-		YPosition=0.82
+		YPosition=0.855
 		XSize=0.32
 		YSize=0.10
 		OnClickLeft=ButtonClicked

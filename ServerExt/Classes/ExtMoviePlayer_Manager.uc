@@ -109,11 +109,25 @@ function OpenMenu(byte NewMenuIndex, optional bool bShowWidgets = true)
 
 	if (NewMenuIndex == UI_Perks)
 	{
-		PerksPage = GUIController.OpenMenu(class'ExtGUI_PerkSelectionPage');
+		if (GUIController != None)
+		{
+			PerksPage = GUIController.OpenMenu(class'ExtGUI_PerkSelectionPage');
+		}
+		if (PerksMenu != None)
+		{
+			PerksMenu.ActionScriptVoid("closeContainer");
+		}
 		SetMovieCanReceiveInput(false);
-		PerksMenu.ActionScriptVoid("closeContainer");
 	}
-	else GUIController.CloseMenu(class'ExtGUI_PerkSelectionPage');
+	else
+	{
+		if (GUIController != None)
+		{
+			GUIController.CloseMenu(class'ExtGUI_PerkSelectionPage');
+		}
+		PerksPage = None;
+		SetMovieCanReceiveInput(true);
+	}
 }
 
 function CloseMenus(optional bool bForceClose=false)
@@ -123,7 +137,11 @@ function CloseMenus(optional bool bForceClose=false)
 	if (PerksPage != None)
 	{
 		GUIController = class'KF2GUIController'.Static.GetGUIController(GetPC());
-		GUIController.CloseMenu(class'ExtGUI_PerkSelectionPage');
+		if (GUIController != None)
+		{
+			GUIController.CloseMenu(class'ExtGUI_PerkSelectionPage');
+		}
+		PerksPage = None;
 	}
 
 	Super.CloseMenus(bForceClose);
@@ -142,7 +160,7 @@ function OnMenuOpen(name WidgetPath, KFGFxObject_Menu Widget)
 		return;
 	}
 
-	if (!bAfterLobby && Widget == PerksMenu)
+	if (!bAfterLobby && Widget == PerksMenu && PerksMenu != None)
 		PerksMenu.ActionScriptVoid("closeContainer");
 }
 

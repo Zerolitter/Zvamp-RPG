@@ -33,22 +33,19 @@ function Timer()
 	CurrentManager = PC.ActivePerkManager;
 	if (CurrentManager==None)
 	{
-		if (PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime>=2.f)
-		{
-			LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
-			PC.ZvampextRequestPerkReplication();
-		}
+		RequestLobbyPerkReplication(PC);
+		HandleLobbyPerkDataNotReady();
 		return;
 	}
 	if (CurrentManager!=None)
 	{
 		if (CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None)
 			CurrentManager.InitPerks();
-		if ((CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None || (PendingPerk!=None && !PendingPerk.bPerkNetReady))
-			&& PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime>=2.f)
+		if (CurrentManager.UserPerks.Length==0 || CurrentManager.CurrentPerk==None)
 		{
-			LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
-			PC.ZvampextRequestPerkReplication();
+			RequestLobbyPerkReplication(PC);
+			HandleLobbyPerkDataNotReady();
+			return;
 		}
 		if (PrevPendingPerk!=None)
 		{
@@ -56,8 +53,12 @@ function Timer()
 			PrevPendingPerk = None;
 		}
 		PerkList.ChangeListSize(CurrentManager.UserPerks.Length);
-		if (PendingPerk!=None && !PendingPerk.bPerkNetReady)
+		if (PendingPerk!=None && !IsLobbyPerkUsable(PendingPerk))
+		{
+			RequestLobbyPerkReplication(PC);
+			HandleLobbyPerkDataNotReady();
 			return;
+		}
 
 		// Huge code block to handle stat updating, but actually pretty well optimized.
 		if (PendingPerk!=OldUsedPerk)
@@ -120,6 +121,43 @@ function Timer()
 			UpdateTraits();
 		}
 	}
+}
+
+final function bool IsLobbyPerkUsable(Ext_PerkBase P)
+{
+	return (P!=None && P.bPerkNetReady && P.PerkStats.Length>0 && P.PerkTraits.Length>0);
+}
+
+final function RequestLobbyPerkReplication(ExtPlayerController PC)
+{
+	if (PC==None)
+		return;
+	if (PC.WorldInfo.TimeSeconds-LastPerkReplicationRequestTime<2.f)
+		return;
+	LastPerkReplicationRequestTime = PC.WorldInfo.TimeSeconds;
+	PC.ZvampextRequestPerkReplication();
+}
+
+final function HandleLobbyPerkDataNotReady()
+{
+	local int i;
+
+	if (StatsList!=None)
+	{
+		for (i=0; i<StatsList.ItemComponents.Length; ++i)
+			if (i<StatBuyers.Length && StatBuyers[i]!=None)
+				StatBuyers[i].CloseMenu();
+		StatsList.ItemComponents.Length = 0;
+	}
+	if (TraitsList!=None)
+	{
+		TraitsList.DisplayPerk = None;
+		TraitsList.ChangeListSize(0);
+	}
+	if (PerkLabel!=None)
+		PerkLabel.SetText("Loading perk data...");
+	OldUsedPerk = None;
+	OldPerkPoints = -1;
 }
 
 defaultproperties

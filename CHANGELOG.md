@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.1.0 - Zvampext RPG Public Readiness (2026-05-22)
+- fixed join-lobby perk replication readiness so perk selection, spawned menu loading, and trait data recover after fresh joins
+- fixed trader weapon purchases passing invalid upgrade level 255 for base purchases
+- added spawned Perk UI server title branding with `Zvamp presents` header text
+- prepared Zvampext-only Workshop publication metadata and excluded DoshRaffle Full Beta from the release package
+
 ## v2.0.0 - Zvampext First Release (2026-05-15)
 - first Zvampext-branded release while keeping `ServerExt` and `ServerExtMut` package/class names for compatibility
 - added the owned `ServerExtMut.Zvampext_Endless` game class for the current Endless RPG direction

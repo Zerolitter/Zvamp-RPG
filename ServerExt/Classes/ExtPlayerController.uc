@@ -64,12 +64,17 @@ var transient Object BonusFX;
 var bool bRevampTraderGuardEnabled,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader;
 var bool bVampUIEndMatchEnabled;
 var bool bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup;
+var bool bAdminGrenadeThrowRange;
+var bool bAdminAmmoBoxCount,bAdminItemBoxCount,bAdminPickupRespawnTime,bAdminGrenadesFromAmmo,bAdminAmmoBoxArmor;
 var float AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue;
+var float AdminGrenadeThrowRangeValue;
+var float AdminAmmoBoxCountValue,AdminItemBoxCountValue,AdminPickupRespawnTimeValue,AdminGrenadesFromAmmoValue,AdminAmmoBoxArmorValue;
 var bool bZvampCameraEnabled,bZvampDisableCamShakes,bZvampDisableSprintFOVChange,bZvampDisableEarsRinging,bZvampDisableCameraAnims;
 var float ZvampZedTimeEffectReduction;
 var string SpawnedPerkUILayout,MidGameMenuLayout,ZvampextBuildID;
 var int PlayerDoshThrowAmount;
 var transient array<FPendingPerkStatBuy> PendingStatBuys;
+var transient array<KFProj_Grenade> ZvampextClientTunedGrenades;
 var transient array<string> ZvampextClientTraderItems;
 var transient byte ZvampextSettingsSyncRetries;
 
@@ -105,7 +110,10 @@ replication
 	if (bNetDirty)
 		MidGameMenuClass,ActivePerkManager,bRevampTraderGuardEnabled,bRevampTraderGuardBlockSkip,bRevampTraderGuardPublicOpenTrader,
 		bVampUIEndMatchEnabled,bAdminGrenadeDamage,bAdminGrenadeRadius,bAdminAmmoPickup,bAdminItemPickup,bAdminArmorPickup,
-		AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue;
+		AdminGrenadeDamageValue,AdminGrenadeRadiusValue,AdminAmmoPickupValue,AdminItemPickupValue,AdminArmorPickupValue,
+		bAdminGrenadeThrowRange,AdminGrenadeThrowRangeValue,
+		bAdminAmmoBoxCount,bAdminItemBoxCount,bAdminPickupRespawnTime,bAdminGrenadesFromAmmo,bAdminAmmoBoxArmor,
+		AdminAmmoBoxCountValue,AdminItemBoxCountValue,AdminPickupRespawnTimeValue,AdminGrenadesFromAmmoValue,AdminAmmoBoxArmorValue;
 }
 
 simulated function PostBeginPlay()
@@ -217,6 +225,8 @@ simulated function ZvampextClientUISyncTimer()
 		SendServerSettings();
 		--ZvampextSettingsSyncRetries;
 	}
+	if (ActivePerkManager == None)
+		RecoverZvampextClientPerkManager();
 	if (ActivePerkManager != None && CurrentPerk != ActivePerkManager)
 	{
 		CurrentPerk = ActivePerkManager;
@@ -283,10 +293,56 @@ reliable server function ZvampextRequestPerkReplication()
 {
 	if (ActivePerkManager!=None)
 	{
+		ClientSetZvampextPerkManager(ActivePerkManager);
 		ActivePerkManager.bForceNetUpdate = true;
 		bForceNetUpdate = true;
 		ActivePerkManager.ZvampextKickClientReplication(true);
 	}
+}
+
+reliable client function ClientSetZvampextPerkManager(ExtPerkManager NewManager)
+{
+	if (NewManager!=None)
+	{
+		ActivePerkManager = NewManager;
+		CurrentPerk = NewManager;
+		NewManager.PlayerOwner = Self;
+		NewManager.PRIOwner = ExtPlayerReplicationInfo(PlayerReplicationInfo);
+		NewManager.InitPerks();
+		ResolveZvampextClientActivePerk();
+		`log("[ZvampPerkRep] Client received ActivePerkManager userPerks="$NewManager.UserPerks.Length@"current="$NewManager.CurrentPerk);
+	}
+	else
+	{
+		`log("[ZvampPerkRep] ClientSetZvampextPerkManager received None");
+	}
+}
+
+simulated final function bool RecoverZvampextClientPerkManager()
+{
+	local ExtPerkManager M;
+
+	if (ActivePerkManager!=None)
+		return true;
+
+	foreach DynamicActors(class'ExtPerkManager', M)
+	{
+		if (M==None)
+			continue;
+		if (M.Owner==Self || M.PlayerOwner==Self)
+		{
+			ActivePerkManager = M;
+			CurrentPerk = M;
+			M.PlayerOwner = Self;
+			M.PRIOwner = ExtPlayerReplicationInfo(PlayerReplicationInfo);
+			M.InitPerks();
+			ResolveZvampextClientActivePerk();
+			`log("[ZvampPerkRep] Recovered ActivePerkManager userPerks="$M.UserPerks.Length@"current="$M.CurrentPerk);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 simulated final function Ext_PerkBase ResolveZvampextClientActivePerk()
@@ -1164,6 +1220,9 @@ Delegate OnAdminHandle(ExtPlayerController PC, int PlayerID, int Action);
 Delegate OnAdminRevampAction(ExtPlayerController PC, int Action);
 Delegate OnAdminSetTraderGuard(ExtPlayerController PC, bool bEnabled, bool bBlockSkip, bool bPublicOpenTrader);
 Delegate OnAdminSetPickupOverrides(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bAmmoPickup, float AmmoPickupValue, bool bItemPickup, float ItemPickupValue, bool bArmorPickup, float ArmorPickupValue);
+Delegate OnAdminSetGrenadeThrowRange(ExtPlayerController PC, bool bThrowRange, float ThrowRangeValue);
+Delegate OnAdminSetGrenadeTuning(ExtPlayerController PC, bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bThrowRange, float ThrowRangeValue);
+Delegate OnAdminSetResourceLimits(ExtPlayerController PC, bool bAmmoBoxCount, float AmmoBoxCountValue, bool bItemBoxCount, float ItemBoxCountValue, bool bPickupRespawnTime, float PickupRespawnTimeValue, bool bGrenadesFromAmmo, float GrenadesFromAmmoValue, bool bAmmoBoxArmor, float AmmoBoxArmorValue);
 Delegate OnAdminFastForwardTrader(ExtPlayerController PC);
 Delegate OnAdminOpenTrader(ExtPlayerController PC);
 Delegate OnPublicOpenTrader(ExtPlayerController PC);
@@ -1197,6 +1256,21 @@ reliable server function AdminSetPickupOverrides(bool bGrenadeDamage, float Gren
 	OnAdminSetPickupOverrides(Self,bGrenadeDamage,GrenadeDamageValue,bGrenadeRadius,GrenadeRadiusValue,bAmmoPickup,AmmoPickupValue,bItemPickup,ItemPickupValue,bArmorPickup,ArmorPickupValue);
 }
 
+reliable server function AdminSetGrenadeThrowRange(bool bThrowRange, float ThrowRangeValue)
+{
+	OnAdminSetGrenadeThrowRange(Self,bThrowRange,ThrowRangeValue);
+}
+
+reliable server function AdminSetGrenadeTuning(bool bGrenadeDamage, float GrenadeDamageValue, bool bGrenadeRadius, float GrenadeRadiusValue, bool bThrowRange, float ThrowRangeValue)
+{
+	OnAdminSetGrenadeTuning(Self,bGrenadeDamage,GrenadeDamageValue,bGrenadeRadius,GrenadeRadiusValue,bThrowRange,ThrowRangeValue);
+}
+
+reliable server function AdminSetResourceLimits(bool bAmmoBoxCount, float AmmoBoxCountValue, bool bItemBoxCount, float ItemBoxCountValue, bool bPickupRespawnTime, float PickupRespawnTimeValue, bool bGrenadesFromAmmo, float GrenadesFromAmmoValue, bool bAmmoBoxArmor, float AmmoBoxArmorValue)
+{
+	OnAdminSetResourceLimits(Self,bAmmoBoxCount,AmmoBoxCountValue,bItemBoxCount,ItemBoxCountValue,bPickupRespawnTime,PickupRespawnTimeValue,bGrenadesFromAmmo,GrenadesFromAmmoValue,bAmmoBoxArmor,AmmoBoxArmorValue);
+}
+
 reliable server function RevampAdminFastForwardTrader()
 {
 	OnAdminFastForwardTrader(Self);
@@ -1215,6 +1289,100 @@ reliable server function RevampPublicOpenTrader()
 reliable server function AdminGiveDosh(int DoshAmount)
 {
 	OnAdminGiveDosh(Self,DoshAmount);
+}
+
+reliable server function ZvampextServerSellTraderWeaponByClass(name WeaponClassName)
+{
+	local KFInventoryManager KFIM;
+	local KFGameReplicationInfo KFGRI;
+	local KFPlayerReplicationInfo KFPRI;
+	local KFWeapon KFW;
+	local Inventory Inv;
+	local STraderItem SoldItem;
+	local class<KFWeaponDefinition> WeaponDef;
+	local int i, SellPrice;
+	local bool bFoundTraderItem;
+	local bool bHasTraderItems, bServerTraderOpen;
+
+	`log("[Zvampext] CTI sell-by-class request player="$PlayerReplicationInfo.PlayerName@"class="$WeaponClassName);
+
+	if (Pawn == None || WeaponClassName == '')
+	{
+		`log("[Zvampext] CTI sell-by-class failed: missing pawn or class. pawn="$Pawn@"class="$WeaponClassName);
+		return;
+	}
+
+	KFIM = KFInventoryManager(Pawn.InvManager);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	KFPRI = KFPlayerReplicationInfo(PlayerReplicationInfo);
+	bHasTraderItems = KFGRI != None && KFGRI.TraderItems != None;
+	bServerTraderOpen = KFIM != None && KFIM.bServerTraderMenuOpen;
+	if (KFIM == None || KFGRI == None || KFGRI.TraderItems == None || KFPRI == None || !KFIM.bServerTraderMenuOpen)
+	{
+		`log("[Zvampext] CTI sell-by-class failed: state unavailable. im="$KFIM@"gri="$KFGRI@"hasTraderItems="$bHasTraderItems@"pri="$KFPRI@"serverTraderOpen="$bServerTraderOpen);
+		return;
+	}
+
+	if (!KFIM.GetWeaponFromClass(KFW, WeaponClassName))
+	{
+		for (Inv = KFIM.InventoryChain; Inv != None; Inv = Inv.Inventory)
+		{
+			KFW = KFWeapon(Inv);
+			if (KFW == None)
+			{
+				continue;
+			}
+
+			if (KFW.Class.Name == WeaponClassName)
+			{
+				break;
+			}
+			KFW = None;
+		}
+	}
+
+	if (KFW == None)
+	{
+		`log("[Zvampext] CTI sell-by-class failed: inventory weapon not found for "$WeaponClassName@" traderDef="$SoldItem.WeaponDef);
+		return;
+	}
+
+	WeaponDef = ZvampResolveWeaponDefForWeapon(KFW);
+	for (i = 0; i < KFGRI.TraderItems.SaleItems.Length; ++i)
+	{
+		if (KFGRI.TraderItems.SaleItems[i].ClassName == WeaponClassName
+			|| KFGRI.TraderItems.SaleItems[i].SingleClassName == WeaponClassName
+			|| KFGRI.TraderItems.SaleItems[i].DualClassName == WeaponClassName
+			|| (WeaponDef != None && KFGRI.TraderItems.SaleItems[i].WeaponDef == WeaponDef)
+			|| (KFGRI.TraderItems.SaleItems[i].WeaponDef != None
+				&& PathName(KFW.Class) ~= KFGRI.TraderItems.SaleItems[i].WeaponDef.default.WeaponClassPath))
+		{
+			SoldItem = KFGRI.TraderItems.SaleItems[i];
+			bFoundTraderItem = true;
+			break;
+		}
+	}
+
+	if (!bFoundTraderItem && WeaponDef == None)
+	{
+		`log("[Zvampext] CTI sell-by-class failed: no trader item or weapon def for "$WeaponClassName@" weapon="$KFW.Class);
+		return;
+	}
+
+	if (bFoundTraderItem)
+		SellPrice = KFIM.GetAdjustedSellPriceFor(SoldItem);
+	if (SellPrice <= 0)
+	{
+		if (SoldItem.WeaponDef != None)
+			SellPrice = Max(1, SoldItem.WeaponDef.default.BuyPrice / 2);
+		else if (WeaponDef != None)
+			SellPrice = Max(1, WeaponDef.default.BuyPrice / 2);
+	}
+
+	KFPRI.AddDosh(SellPrice);
+	KFIM.ServerRemoveFromInventory(KFW);
+	KFW.Destroy();
+	`log("[Zvampext] CTI sell-by-class sold "$WeaponClassName$" index="$i$" price="$SellPrice@"def="$WeaponDef@"foundTrader="$bFoundTraderItem);
 }
 
 reliable server function AdminSetDoshThrowAmount(int NewAmount)
@@ -1314,11 +1482,10 @@ simulated final function bool ShouldKeepChatDuringBossCinematic()
 	local KFGameReplicationInfo KFGRI;
 
 	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
-	return bCinematicMode
-		&& ((PlayerCamera!=None && PlayerCamera.CameraStyle=='Boss')
-			|| IsBossCameraMode()
-			|| GetBoss()!=None
-			|| (KFGRI!=None && KFGRI.IsBossWave()));
+	return (PlayerCamera!=None && PlayerCamera.CameraStyle=='Boss')
+		|| IsBossCameraMode()
+		|| GetBoss()!=None
+		|| (KFGRI!=None && KFGRI.IsBossWave());
 }
 
 reliable client function ClientSetIgnoreButtons(bool bAffectsButtons)
@@ -1359,6 +1526,87 @@ reliable client function ClientSetAdminPickupOverrides(bool bGrenadeDamage, floa
 	AdminItemPickupValue = ItemPickupValue;
 	bAdminArmorPickup = bArmorPickup;
 	AdminArmorPickupValue = ArmorPickupValue;
+	UpdateClientGrenadeTuningTimer();
+}
+
+reliable client function ClientSetAdminGrenadeThrowRange(bool bThrowRange, float ThrowRangeValue)
+{
+	bAdminGrenadeThrowRange = bThrowRange;
+	AdminGrenadeThrowRangeValue = ThrowRangeValue;
+	UpdateClientGrenadeTuningTimer();
+}
+
+simulated final function UpdateClientGrenadeTuningTimer()
+{
+	if (bAdminGrenadeThrowRange || bAdminGrenadeRadius)
+	{
+		SetTimer(0.01f,true,'ApplyClientGrenadeTuningToLiveProjectiles');
+	}
+	else
+	{
+		ClearTimer('ApplyClientGrenadeTuningToLiveProjectiles');
+		ZvampextClientTunedGrenades.Length = 0;
+	}
+}
+
+simulated final function ApplyClientGrenadeTuningToLiveProjectiles()
+{
+	local int i;
+	local float ThrowScale;
+	local KFProj_Grenade GrenadeProj;
+
+	for (i=ZvampextClientTunedGrenades.Length-1; i>=0; --i)
+	{
+		if (ZvampextClientTunedGrenades[i] == None || ZvampextClientTunedGrenades[i].bDeleteMe)
+		{
+			ZvampextClientTunedGrenades.Remove(i,1);
+		}
+	}
+
+	foreach DynamicActors(class'KFProj_Grenade',GrenadeProj)
+	{
+		if (GrenadeProj == None || GrenadeProj.bDeleteMe || GrenadeProj.Instigator != Pawn
+			|| ZvampextClientTunedGrenades.Find(GrenadeProj) != INDEX_NONE)
+		{
+			continue;
+		}
+
+		if (bAdminGrenadeRadius)
+		{
+			GrenadeProj.DamageRadius *= AdminGrenadeRadiusValue;
+		}
+
+		if (bAdminGrenadeThrowRange)
+		{
+			ThrowScale = FMax(AdminGrenadeThrowRangeValue,0.f);
+			GrenadeProj.Speed *= ThrowScale;
+			GrenadeProj.MaxSpeed *= ThrowScale;
+			GrenadeProj.TossZ *= ThrowScale;
+			if (!IsZero(GrenadeProj.Velocity))
+			{
+				GrenadeProj.Velocity *= ThrowScale;
+				GrenadeProj.Speed = VSize(GrenadeProj.Velocity);
+			}
+			GrenadeProj.SetPhysics(PHYS_Falling);
+			`log("[Zvamp] client grenade throw tuning applied class="$GrenadeProj.Class$" scale="$ThrowScale$" speed="$GrenadeProj.Speed);
+		}
+
+		ZvampextClientTunedGrenades.AddItem(GrenadeProj);
+	}
+}
+
+reliable client function ClientSetAdminResourceLimits(bool bAmmoBoxCount, float AmmoBoxCountValue, bool bItemBoxCount, float ItemBoxCountValue, bool bPickupRespawnTime, float PickupRespawnTimeValue, bool bGrenadesFromAmmo, float GrenadesFromAmmoValue, bool bAmmoBoxArmor, float AmmoBoxArmorValue)
+{
+	bAdminAmmoBoxCount = bAmmoBoxCount;
+	AdminAmmoBoxCountValue = AmmoBoxCountValue;
+	bAdminItemBoxCount = bItemBoxCount;
+	AdminItemBoxCountValue = ItemBoxCountValue;
+	bAdminPickupRespawnTime = bPickupRespawnTime;
+	AdminPickupRespawnTimeValue = PickupRespawnTimeValue;
+	bAdminGrenadesFromAmmo = bGrenadesFromAmmo;
+	AdminGrenadesFromAmmoValue = GrenadesFromAmmoValue;
+	bAdminAmmoBoxArmor = bAmmoBoxArmor;
+	AdminAmmoBoxArmorValue = AmmoBoxArmorValue;
 }
 
 reliable client function ClientSetZvampCamera(bool bEnabled, bool bDisableShakes, bool bDisableSprintFOV, bool bDisableRinging, bool bDisableAnims, float ZedReduction)
@@ -1857,12 +2105,62 @@ final function class<KFWeaponDefinition> ZvampResolveWeaponDefForWeapon(KFWeapon
 		return None;
 
 	ClassPath = PathName(W.Class);
+	ClassName = string(W.Class.Name);
+	switch (ClassName)
+	{
+	case "KFWeap_Shotgun_DragonsBreath":
+		return class'KFWeapDef_DragonsBreath';
+	case "KFWeap_AssaultRifle_M16M203":
+		return class'KFWeapDef_M16M203';
+	case "KFWeap_AssaultRifle_Medic":
+		return class'KFWeapDef_MedicRifle';
+	case "KFWeap_AssaultRifle_Bullpup":
+		return class'KFWeapDef_Bullpup';
+	case "KFWeap_AssaultRifle_AK12":
+		return class'KFWeapDef_AK12';
+	case "KFWeap_AssaultRifle_SCAR":
+		return class'KFWeapDef_SCAR';
+	case "KFWeap_SMG_Medic":
+		return class'KFWeapDef_MedicSMG';
+	case "KFWeap_Shotgun_Medic":
+		return class'KFWeapDef_MedicShotgun';
+	case "KFWeap_Shotgun_M4":
+		return class'KFWeapDef_M4';
+	case "KFWeap_Shotgun_DoubleBarrel":
+		return class'KFWeapDef_DoubleBarrel';
+	case "KFWeap_Shotgun_AA12":
+		return class'KFWeapDef_AA12';
+	case "KFWeap_SMG_MP5RAS":
+		return class'KFWeapDef_MP5RAS';
+	case "KFWeap_SMG_P90":
+		return class'KFWeapDef_P90';
+	case "KFWeap_SMG_Kriss":
+		return class'KFWeapDef_Kriss';
+	case "KFWeap_Bow_Crossbow":
+		return class'KFWeapDef_Crossbow';
+	case "KFWeap_Rifle_M14EBR":
+		return class'KFWeapDef_M14EBR';
+	case "KFWeap_Rifle_RailGun":
+		return class'KFWeapDef_RailGun';
+	case "KFWeap_Flame_Flamethrower":
+		return class'KFWeapDef_FlameThrower';
+	case "KFWeap_Beam_Microwave":
+		return class'KFWeapDef_MicrowaveGun';
+	case "KFWeap_GrenadeLauncher_M79":
+		return class'KFWeapDef_M79';
+	case "KFWeap_RocketLauncher_RPG7":
+		return class'KFWeapDef_RPG7';
+	case "KFWeap_Shotgun_Nailgun":
+		return class'KFWeapDef_Nailgun';
+	case "KFWeap_Blunt_Pulverizer":
+		return class'KFWeapDef_Pulverizer';
+	}
+
 	DotPos = InStr(ClassPath, ".");
 	if (DotPos <= 0)
 		return None;
 
 	PackageName = Left(ClassPath, DotPos);
-	ClassName = string(W.Class.Name);
 	if (Left(ClassName, 7) ~= "KFWeap_")
 	{
 		Suffix = Mid(ClassName, 7);
@@ -1870,12 +2168,33 @@ final function class<KFWeaponDefinition> ZvampResolveWeaponDefForWeapon(KFWeapon
 		WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
 		if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
 			return WeaponDef;
+
+		if (PackageName ~= "KFGameContent")
+		{
+			DefPath = "KFGame.KFWeapDef_" $ Suffix;
+			WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+			if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
+				return WeaponDef;
+		}
 	}
 
 	DefPath = PackageName $ "." $ Repl(ClassName, "KFWeap", "KFWeapDef");
 	WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
 	if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
 		return WeaponDef;
+
+	if (PackageName ~= "KFGameContent")
+	{
+		DefPath = "KFGame." $ Repl(ClassName, "KFWeap", "KFWeapDef");
+		WeaponDef = class<KFWeaponDefinition>(DynamicLoadObject(DefPath, class'Class', true));
+		if (WeaponDef != None && PathName(W.Class) ~= WeaponDef.default.WeaponClassPath)
+			return WeaponDef;
+	}
+
+	if (PathName(W.Class) ~= class'ExtWeapDef_9mm'.default.WeaponClassPath)
+	{
+		return class'ExtWeapDef_9mm';
+	}
 
 	return None;
 }
@@ -3018,7 +3337,7 @@ defaultproperties
 	bIgnoreEncroachers=true
 	SpectatorCameraSpeed=900
 	bVampUIEndMatchEnabled=false
-	ZvampextBuildID="ServerExt 2026-05-19 mapvote-player-progress-vote-chat"
+	ZvampextBuildID="ServerExt V2.1.0 2026-05-22 public-release"
 	ZvampextClientTraderFilterIndex=-1
 	MidGameMenuClass=class'UI_MidGameMenu'
 	PerkList.Empty()

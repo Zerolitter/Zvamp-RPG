@@ -239,14 +239,27 @@ simulated function PostBeginPlay()
 
 simulated function InitPerk()
 {
+	local ExtPlayerController EPC;
+	local ExtPerkManager M;
+
 	if (PlayerOwner==None)
 		PlayerOwner = GetALocalPlayerController();
 	if (PerkManager==None)
 	{
-		foreach DynamicActors(class'ExtPerkManager',PerkManager)
+		EPC = ExtPlayerController(PlayerOwner);
+		if (EPC!=None && EPC.ActivePerkManager!=None
+			&& (Owner==EPC || PlayerOwner==EPC || Owner==EPC.ActivePerkManager.Owner))
 		{
-			PerkManager.RegisterPerk(Self);
-			break;
+			EPC.ActivePerkManager.RegisterPerk(Self);
+			return;
+		}
+		foreach DynamicActors(class'ExtPerkManager',M)
+		{
+			if (M!=None && (M.Owner==PlayerOwner || M.PlayerOwner==PlayerOwner))
+			{
+				M.RegisterPerk(Self);
+				return;
+			}
 		}
 	}
 }
@@ -1114,6 +1127,21 @@ simulated unreliable client function ClientAuth()
 	if (Owner==None)
 		SetOwner(PlayerOwner);
 	ServerAck();
+}
+
+function RestartZvampextClientReplication(optional bool bClearClientAuth)
+{
+	if (bClearClientAuth)
+		bClientAuthorized = false;
+	bPerkNetReady = false;
+	RepState = 0;
+	RepIndex = 0;
+	ClearTimer('ReplicateTimer');
+	bForceNetUpdate = true;
+	RemoteRole = ROLE_SimulatedProxy;
+	if (bClientAuthorized)
+		SetTimer(0.01+FRand()*0.025,true,'ReplicateTimer');
+	else NextAuthTime = 0.f;
 }
 
 unreliable server function ServerAck()

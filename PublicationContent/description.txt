@@ -1,10 +1,11 @@
-[h1]Zvampext RPG V2.0.6 - Hotfixes check changelogs[/h1]
-[hr][/hr]
+[h1]Zvampext RPG V2.1.0[/h1]
+
+Zvampext RPG is a Killing Floor 2 ServerExt revamp that keeps the classic ServerExt package names for compatibility while adding a custom RPG progression layer, perk UI, admin tools, and server quality-of-life features.
 
 [b]Current state[/b]
 [h2][b]Stable for now[/b][/h2]
 
-[h2][b]Latest Build is playable on the test server[/b][/h2]
+[h2][b]Latest Unpublished Build is UNAVAILABLE on the test server[/b][/h2]
 If 1 is set as password, the server is ahead of release. You may still join.
 To join, open the console with [b]F3[/b] and type:
 [code]
@@ -16,63 +17,41 @@ C:\\Users\\<user>\\Documents\\My Games\\KillingFloor2\\KFGame\\Cache
 C:\\Users\\<user>\\Documents\\My Games\\KillingFloor2\\KFGame\\Unpublished
 [/code]
 
-Zvampext is a Killing Floor 2 RPG / ServerExt revamp. It keeps the original package and class names, [b]ServerExt[/b] and [b]ServerExtMut[/b], so existing ServerExt-style servers and clients can stay compatible while the visible project branding moves forward as Zvampext.
 
-[url=https://steamcommunity.com/workshop/filedetails/discussion/3726663955/841754306657910790/][h2][b]CLICK HERE - A personal note on the motivation behind this project[/b][/h2][/url]
+[h2]What is included[/h2]
+[list]
+[*]Custom Zvampext RPG perk progression built on ServerExt and ServerExtMut.
+[*]Lobby and in-game Perk V2 UI for perk selection, stat spending, trait configuration, prestige, reset, and unload actions.
+[*]Custom Zvampext endless game class for RPG server flow.
+[*]Admin dashboard features for pickup tuning, grenade tuning, trader controls, wave progress, server messages, and player management.
+[*]Compatibility helpers for custom trader items, ZedSpawner, ZedCosmetic, TF2 Sentry, TraderGuard style trader control, and related server-side workflows.
+[*]Localized ServerExt text files and Zvampext trait icon assets.
+[/list]
+
+[h2]V2.1.0 highlights[/h2]
+[list]
+[*]Fixed perk replication readiness when joining through lobby and spawning before all perk data is loaded.
+[*]Fixed trait data recovery so in-game menus do not remain stuck on loading perk data.
+[*]Fixed trader weapon purchases that could pass invalid upgrade level 255.
+[*]Added server title branding and Zvamp presents header text to the spawned Perk UI.
+[/list]
+
+[h2]Server setup[/h2]
+[code]
+Mutator=ServerExtMut.ServerExtMut
+Game=ServerExtMut.Zvampext_Endless
+[/code]
+
+The package names remain ServerExt and ServerExtMut to preserve compatibility with existing ServerExt-based servers and tools.
+
+[h2]Notes[/h2]
+[list]
+[*]This upload intentionally contains only the Zvampext ServerExt and ServerExtMut packages.
+[*]DoshRaffle Full Beta is not included in this release.
+[*]Server hosts should review generated KFServerExtMut.ini and KFServerExt.ini settings after first launch.
+[/list]
 
 https://github.com/Zerolitter/Zvamp-RPG/blob/revamp-edition/README.md
-
-[hr][/hr]
-
-[h1]Zvamp RPG Features[/h1]
-[list]
-[*]Full RPG perk progression with levels, prestige, star points, and configurable stat investment.
-[*]10 playable RPG perk classes based on the core Killing Floor 2 perk lineup.
-[*]Per-perk skill trees with upgradeable stats such as damage, reload, health, recoil, spread, ammo, and utility bonuses.
-[*]Prestige progression with extra star-point scaling for long-term character growth.
-[*]Custom V2 perk menu with lobby and in-game perk management.
-[*]Configurable perk costs, level caps, prestige limits, and stat-buy steps through server config.
-[*]Server-side perk replication recovery to reduce rare lobby perk-loading issues.
-[*]Custom trader item support through [b]KFZvampCustomItems.ini[/b].
-[*]Live custom item refresh command through [b]ZRefreshNewItems[/b].
-[*]Admin playtest commands for faster testing, including [b]DoshMe[/b] and [b]ProgressWave[/b].
-[*]Trader-time movement boost support through [b]KFZvampKnife.ini[/b].
-[*]Configurable knife movement, parry block, and trader-window speed behavior.
-[*]Optional UI-only compatibility mode through [b]bZvampextUIOnly[/b].
-[*]Pickup and grenade override controls for grenade damage, grenade radius, ammo pickup, and armor pickup scaling.
-[*]TraderGuard-style trader protection and skip-trader flow support.
-[*]Endless-mode stability improvements around trader opening, skip-trader handling, and wave transitions.
-[*]ZedSpawner compatibility work for custom zed class lists.
-[*]Compatibility notes and helper config support for ZedSpawner, ZedCosmetic, TF2 Sentry, TraderGuard, Loot Beams, FriendlyHUD, and AutoHealing.
-[*]Custom zed XP support for external zed packages.
-[*]Admin/live-test tooling for diagnostics, god mode, spawn pause/resume, end-wave flow, and max-monster tuning.
-[*]Configurable pickup, grenade, health, armor, magazine, trader, camera, knife, and syringe behavior.
-[*]Steam Workshop package support while keeping the original [b]ServerExt[/b] and [b]ServerExtMut[/b] package names for compatibility.
-[/list]
-
-[h1]Known first-release notes[/h1]
-[list]
-[*]Changing perk through the Zvampext Perk V2 UI is the recommended path.
-[/list]
-
-
-
-[h1]Implemented / integrated in Zvampext so far:[/h1]
-
-[b]ServerExt / ServerExtMut foundation: [/b]kept original package names for compatibility.
-[b]SafeMutLoader path:[/b] local server-compatible wrapper work for loading through SML. [u](The option is there, but the setup process is fairly complicated and you would need to figure it out yourself.)[/u]
-[b]TraderGuard: [/b]trader protection, open/skip trader handling, public RvOpenTrader option.
-[b]ZedSpawner:[/b] compatibility work for custom zed lists and XP handling.
-[b]TF2 Sentry: [/b]custom trader item support, Sentry Hammer/Wrench alias, 5000 price fix path. [u](Remember to add the workshopID&Package to server)[/u]
-[b]AutoHealing:[/b] staged/helper integration support.
-[b]ZedCosmetic:[/b] compatibility wrapper/testing work, though not a core required piece.
-[b]CustomSyringe: [/b]helper config support.
-[b]KFStaticCameraMod [/b]/ camera behavior: helper config support.
-[b]Knife / TraderDash-style speed behavior:[/b] trader-time speed boost and knife movement config support.
-[b]Loot Beams / FriendlyHUD: [/b]compatibility notes/helper support rather than deep built-in behavior.
-[b]Custom trader items:[/b] via KFZvampCustomItems.ini and ZRefreshNewItems. AKA [u]Traderguard is replacement of CTI&TIM[/u] Dont want this? Use [u]bZvampextUIOnly=True[/u]
-
-
 
 [h1]Credits[/h1]
 [list]

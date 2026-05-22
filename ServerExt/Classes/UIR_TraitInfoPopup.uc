@@ -109,8 +109,78 @@ final function UpdateTraitDescription()
 		S $= "|Next cost: #{F3F781}"$Cost$"#{DEF}";
 	}
 	else S $= "|Next cost: #{9FF781}MAX#{DEF}";
+	if (MyTraitClass.Default.MinLevel>0)
+		S $= "|Minimum level: #{F3F781}"$MyTraitClass.Default.MinLevel$"#{DEF}";
+	S $= GetRequirementInfo();
 
 	TraitInfo.SetText(S$"||"$MyTrait.GetPerkDescription());
+}
+
+final function string GetRequirementInfo()
+{
+	local int Level;
+
+	if (MyTraitClass==None || MyPerk==None || TraitIndex<0 || TraitIndex>=MyPerk.PerkTraits.Length)
+		return "";
+
+	Level = MyPerk.PerkTraits[TraitIndex].CurrentLevel;
+	if (Level>=MyTraitClass.Default.NumLevels)
+		return "|Status: #{9FF781}Done#{DEF}";
+
+	if (MyPerk.CurrentLevel<MyTraitClass.Default.MinLevel)
+		return "|Status: #{F3F781}Level locked until "$MyTraitClass.Default.MinLevel$"#{DEF}";
+
+	if (MyTraitClass.Default.TraitGroup==class'Ext_TGroupRegen' && Level==0)
+		return GetRegenRequirementInfo();
+
+	if (MyTraitClass.Static.MeetsRequirements(Level,MyPerk))
+		return "|Status: #{DEF}Upgradeable#{DEF}";
+	return "|Status: #{FF4048}Locked by trait requirements#{DEF}";
+}
+
+final function string GetRegenRequirementInfo()
+{
+	local int Used,Limit;
+	local string S;
+	local bool bSlotAvailable;
+
+	Used = GetRegenTraitCount();
+	Limit = class'Ext_TGroupRegen'.Static.GetMaxLimit(MyPerk);
+	bSlotAvailable = !class'Ext_TGroupRegen'.Static.GroupLimited(MyPerk,MyTraitClass);
+	S = "|Row status: R "$Used$"/"$Limit;
+	S $= "|Regen slots: ";
+	if (bSlotAvailable)
+		S $= "#{9FF781}"$Used$"/"$Limit$" available#{DEF}";
+	else if ((Used>=1 && MyPerk.CurrentPrestige<1) || (Used>=2 && MyPerk.CurrentPrestige<5))
+		S $= "#{FF4048}"$Used$"/"$Limit$" prestige locked#{DEF}";
+	else S $= "#{F3F781}"$Used$"/"$Limit$" level locked#{DEF}";
+
+	if (bSlotAvailable)
+		S $= "|R color: #{9FF781}green, a regen slot is open now#{DEF}";
+	else if ((Used>=1 && MyPerk.CurrentPrestige<1) || (Used>=2 && MyPerk.CurrentPrestige<5))
+		S $= "|R color: #{FF4048}red, the next regen slot needs more prestige#{DEF}";
+	else S $= "|R color: #{F3F781}yellow, prestige is enough but the next slot needs more levels#{DEF}";
+
+	if (Used<1)
+		S $= "|Next regen slot: available now";
+	else if (Used==1)
+		S $= "|Next regen slot: prestige 1 and level 100";
+	else if (Used==2)
+		S $= "|Next regen slot: prestige 5 and level 150";
+	else S $= "|All regen slots are unlocked";
+	return S;
+}
+
+final function int GetRegenTraitCount()
+{
+	local int i,Count;
+
+	if (MyPerk==None)
+		return 0;
+	for (i=0; i<MyPerk.PerkTraits.Length; ++i)
+		if (MyPerk.PerkTraits[i].CurrentLevel>0 && MyPerk.PerkTraits[i].TraitType!=None && MyPerk.PerkTraits[i].TraitType.Default.TraitGroup==class'Ext_TGroupRegen')
+			++Count;
+	return Count;
 }
 
 function ButtonClicked(KFGUI_Button Sender)

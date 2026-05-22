@@ -20,6 +20,7 @@ class ExtMenu_Perks extends KFGFxMenu_Perks;
 
 var ExtPlayerController ExtKFPC;
 var Ext_PerkBase ExtPrevPerk;
+var transient int DeferredOpenAttempts;
 
 function OnOpen()
 {
@@ -27,12 +28,24 @@ function OnOpen()
 	if (ExtKFPC == none)
 		ExtKFPC = ExtPlayerController(KFPC);
 
-	if (ExtKFPC.ActivePerkManager==None)
+	if (ExtKFPC==None || ExtKFPC.ActivePerkManager==None)
 	{
-		ExtKFPC.SetTimer(0.25,true,'OnOpen',Self);
+		if (ExtKFPC!=None)
+			ExtKFPC.SetTimer(0.25,true,'OnOpen',Self);
+		return;
+	}
+	ExtKFPC.ActivePerkManager.InitPerks();
+	if (ExtKFPC.ActivePerkManager.CurrentPerk==None)
+		ExtKFPC.ResolveZvampextClientActivePerk();
+	if (ExtKFPC.ActivePerkManager.UserPerks.Length==0 || ExtKFPC.ActivePerkManager.CurrentPerk==None)
+	{
+		if (++DeferredOpenAttempts<40)
+			ExtKFPC.SetTimer(0.25,true,'OnOpen',Self);
+		`log("[ZvampPerkGFx] Waiting for lobby perk data: userPerks="$ExtKFPC.ActivePerkManager.UserPerks.Length@"current="$ExtKFPC.ActivePerkManager.CurrentPerk);
 		return;
 	}
 	ExtKFPC.ClearTimer('OnOpen',Self);
+	DeferredOpenAttempts = 0;
 
 	if (ExtPrevPerk==None)
 		ExtPrevPerk = ExtKFPC.ActivePerkManager.CurrentPerk;
@@ -43,6 +56,9 @@ function OnOpen()
 
 final function ExUpdateContainers(Ext_PerkBase PerkClass)
 {
+	if (PerkClass==None || ExtKFPC==None || ExtKFPC.ActivePerkManager==None)
+		return;
+
 	LastPerkLevel = PerkClass.CurrentLevel;
 	if (ExtPerksContainer_Header(HeaderContainer)!=none)
 		ExtPerksContainer_Header(HeaderContainer).ExUpdatePerkHeader(PerkClass);
@@ -81,6 +97,9 @@ function SavePerkData();
 
 function Callback_PerkSelected(byte NewPerkIndex, bool bClickedIndex)
 {
+	if (ExtKFPC==None || ExtKFPC.ActivePerkManager==None || NewPerkIndex>=ExtKFPC.ActivePerkManager.UserPerks.Length)
+		return;
+
 	ExtPrevPerk = ExtKFPC.ActivePerkManager.UserPerks[NewPerkIndex];
 	ExUpdateContainers(ExtPrevPerk);
 

@@ -44,21 +44,36 @@ function PreDraw()
 
 	Super.PreDraw();
 
+	if (GetPlayer() == None || GetPlayer().Player == None)
+		return;
+
 	Viewport = LocalPlayer(GetPlayer().Player).ViewportClient;
-	MovieManager = ExtMoviePlayer_Manager(KFPlayerController(GetPlayer()).MyGFxManager);
+	if (Viewport == None)
+		return;
+
+	if (KFPlayerController(GetPlayer()) != None)
+	{
+		MovieManager = ExtMoviePlayer_Manager(KFPlayerController(GetPlayer()).MyGFxManager);
+	}
 	if (CaptureMouse())
 	{
 		Viewport.bDisplayHardwareMouseCursor = true;
 		Viewport.ForceUpdateMouseCursor(true);
 
-		MovieManager.SetMovieCanReceiveInput(false);
+		if (MovieManager != None)
+		{
+			MovieManager.SetMovieCanReceiveInput(false);
+		}
 	}
 	else if (Viewport.bDisplayHardwareMouseCursor)
 	{
 		Viewport.bDisplayHardwareMouseCursor = false;
 		Viewport.ForceUpdateMouseCursor(true);
 
-		MovieManager.SetMovieCanReceiveInput(true);
+		if (MovieManager != None)
+		{
+			MovieManager.SetMovieCanReceiveInput(true);
+		}
 	}
 }
 
@@ -72,5 +87,5 @@ defaultproperties
 	YSize=0.73
 
 	Pages.Empty
-	Pages.Add(Class'UIP_SpawnedPerkRebuild')
+	Pages.Add(Class'UIP_PerkSelectionLobby')
 }

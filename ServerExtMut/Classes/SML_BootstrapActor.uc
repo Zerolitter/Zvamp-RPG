@@ -49,6 +49,24 @@ final function Mutator FindExistingMutator(class<Mutator> TargetClass)
 	return None;
 }
 
+final function AddTargetToMutatorChain(Mutator M)
+{
+	if (M == None || WorldInfo == None || WorldInfo.Game == None)
+		return;
+
+	if (MutatorInChain(M))
+		return;
+
+	if (WorldInfo.Game.BaseMutator == None)
+	{
+		WorldInfo.Game.BaseMutator = M;
+	}
+	else
+	{
+		WorldInfo.Game.BaseMutator.AddMutator(M);
+	}
+}
+
 final function SpawnTargetMutator()
 {
 	local class<Mutator> TargetClass;
@@ -79,11 +97,7 @@ final function SpawnTargetMutator()
 	}
 
 	SpawnedMutator = M;
-
-	if (MutatorInChain(M))
-	{
-		`log("[SMLCompat] WARN target mutator is still in BaseMutator chain" @ TargetMutatorClassName);
-	}
+	AddTargetToMutatorChain(M);
 
 	`log("[SMLCompat] Active SML runtime" @ TargetMutatorClassName);
 }

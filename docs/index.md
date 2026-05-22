@@ -30,6 +30,9 @@ or logs. Detailed reports are much easier to reproduce and fix.
 - Owned Endless game class: `ServerExtMut.Zvampext_Endless`.
 - Custom trait icons through `ServerExtTraitIcons.upk`.
 - Custom trader items through `KFZvampCustomItems.ini`.
+- Dosh raffle planning notes: [main map](dosh-raffle.md),
+  [server-side version](dosh-raffle-server-side.md), and
+  [animated SpinTheWheel version](dosh-raffle-animated-wheel.md).
 - ZedSpawner support for custom zed classes.
 - TraderGuard support for safe trader aliases and public trader controls.
 - Optional compatibility helpers for knife, syringe, and camera behavior.
@@ -130,17 +133,17 @@ Example:
 ```ini
 [ServerExtMut.Zvamp_CustomItems]
 bAddNewWeaponsToConfig=False
-Item=TF2SentryMod.SentryWeapon
-StorePrice=TF2SentryMod.SentryWeapon=5000
+Item=TF2SentryMod.SentryWeaponDef
+StorePrice=TF2SentryMod.SentryWeaponDef=5000
 ```
 
-Use one `Item=` row per weapon. The value can be either a weapon class or a
-weapon definition class.
+Use one `Item=` row per weapon. Prefer the weapon definition class when one is
+available, for example `TF2SentryMod.SentryWeaponDef`.
 
 Use `StorePrice=` to override trader price:
 
 ```ini
-StorePrice=TF2SentryMod.SentryWeapon=5000
+StorePrice=TF2SentryMod.SentryWeaponDef=5000
 ```
 
 After editing item rows while the server is running:

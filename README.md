@@ -13,8 +13,8 @@ This mod replaces current perk system in [Killing Floor 2](https://en.wikipedia.
 
 This is a further development of the ServerExt mutator from [Marco](https://forums.tripwireinteractive.com/index.php?threads/mutator-server-extension-mod.109463) and [Forrest Mark X](https://github.com/ForrestMarkX/KF2-Server-Extension).  
 
-## Zvampext V2.0
-This working copy is the Zvampext V2.0 first-release revamp of ServerExt. It keeps the `ServerExt` and `ServerExtMut` package/class names for compatibility while adding the owned `ServerExtMut.Zvampext_Endless` game class, Perk V2 UI, custom item config support, trait icons, and dedicated compatibility helpers.
+## Zvampext V2.1.0
+This working copy is the Zvampext V2.1.0 public release of the ServerExt revamp. It keeps the `ServerExt` and `ServerExtMut` package/class names for compatibility while adding the owned `ServerExtMut.Zvampext_Endless` game class, Perk V2 UI, custom item config support, trait icons, and dedicated compatibility helpers.
 
 ## Usage & Setup
 See the [Steam Workshop page](https://steamcommunity.com/sharedfiles/filedetails/?id=3726663955) and the [V2 setup page](docs/index.md).  
@@ -63,7 +63,7 @@ The brewed files will be here:
 - The cat on [the cover](PublicationContent/preview.png) is [Meawbin](https://x.com/meawbinneko) (original character by [Cotton Valent](https://x.com/horrormove)).  
 
 ## Status
-- Zvampext V2.0 is the first release milestone of this revamp.
+- Zvampext V2.1.0 is the current public release milestone of this revamp.
 - Future patches and compatibility fixes continue from this baseline.
 
 ## Mirrors

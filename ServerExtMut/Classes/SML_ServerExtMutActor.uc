@@ -21,7 +21,8 @@ var array<ExtHumanPawn> SMLInitializedPawns;
 var transient array<FSMLDamageHistoryMark> SMLDamageHistoryMarks;
 var transient array<KFPawn_Monster> SMLXPProcessedZeds;
 var ExtPlayerStat ServerStatLoader;
-var bool bGameHasEnded, bZvampextTraderItemsApplied, bSMLTraderAutoPaused, bRevampSpawnsPaused, bSMLDamageMessages;
+var bool bGameHasEnded, bZvampextTraderItemsApplied, bSMLTraderAutoPaused, bRevampSpawnsPaused, bSMLDamageMessages, bZvampCompatDefaultsApplied, bSMLTraderCloseTimerCleared;
+var int SMLTraderPausedRemainingTime;
 var config bool bAutoMessageEnabled;
 var transient float NextAutoMessageTime;
 var transient float SMLNoLiveZedSince;
@@ -34,7 +35,9 @@ event PreBeginPlay()
 	if (WorldInfo.NetMode == NM_Client)
 		return;
 
+	SyncRuntimeConfigFromServerExtMut();
 	SetupGameClasses();
+	ApplyZvampCompatibilityDefaults();
 	bSMLDamageMessages = class'ServerExtMut'.default.bDamageMessages;
 	if (DoshThrowAmount <= 0)
 	{
@@ -56,6 +59,92 @@ event PreBeginPlay()
 	SetTimer(0.1f, true, 'SMLDamageMessageTick');
 	SetTimer(1.f, false, 'ApplyZvampextTraderItems');
 	`log("[SMLCompat] Active Info runtime ServerExtMut.SML_ServerExtMutActor");
+}
+
+final function SyncRuntimeConfigFromServerExtMut()
+{
+	DoshThrowAmount = class'ServerExtMut'.default.DoshThrowAmount;
+	ForcedMaxPlayers = class'ServerExtMut'.default.ForcedMaxPlayers;
+	RevampAdminSteamIDs = class'ServerExtMut'.default.RevampAdminSteamIDs;
+	ZvampextAdminIDs = class'ServerExtMut'.default.ZvampextAdminIDs;
+	AdminCommands = class'ServerExtMut'.default.AdminCommands;
+	MinUnloadPerkLevel = class'ServerExtMut'.default.MinUnloadPerkLevel;
+	MaxTopPlayers = class'ServerExtMut'.default.MaxTopPlayers;
+	UnloadPerkExpCost = class'ServerExtMut'.default.UnloadPerkExpCost;
+	bNoAdminCommands = class'ServerExtMut'.default.bNoAdminCommands;
+	bZvampextAutoEnableCheats = class'ServerExtMut'.default.bZvampextAutoEnableCheats;
+	bRevampTraderGuard = class'ServerExtMut'.default.bRevampTraderGuard;
+	bRevampTraderGuardBlockSkip = class'ServerExtMut'.default.bRevampTraderGuardBlockSkip;
+	bRevampTraderGuardPublicOpenTrader = class'ServerExtMut'.default.bRevampTraderGuardPublicOpenTrader;
+	bVampUIEndMatchEnabled = class'ServerExtMut'.default.bVampUIEndMatchEnabled;
+	bZvampextAutoPauseTrader = class'ServerExtMut'.default.bZvampextAutoPauseTrader;
+	bZvampextTraderSpeedBoost = class'ServerExtMut'.default.bZvampextTraderSpeedBoost;
+	ZvampextTraderSpeedBoostMultiplier = class'ServerExtMut'.default.ZvampextTraderSpeedBoostMultiplier;
+	AdminGrenadeDamageValue = class'ServerExtMut'.default.AdminGrenadeDamageValue;
+	AdminGrenadeRadiusValue = class'ServerExtMut'.default.AdminGrenadeRadiusValue;
+	AdminAmmoPickupValue = class'ServerExtMut'.default.AdminAmmoPickupValue;
+	AdminItemPickupValue = class'ServerExtMut'.default.AdminItemPickupValue;
+	AdminArmorPickupValue = class'ServerExtMut'.default.AdminArmorPickupValue;
+	bAdminGrenadeDamage = class'ServerExtMut'.default.bAdminGrenadeDamage;
+	bAdminGrenadeRadius = class'ServerExtMut'.default.bAdminGrenadeRadius;
+	bAdminAmmoPickup = class'ServerExtMut'.default.bAdminAmmoPickup;
+	bAdminItemPickup = class'ServerExtMut'.default.bAdminItemPickup;
+	bAdminArmorPickup = class'ServerExtMut'.default.bAdminArmorPickup;
+	SpawnedPerkUILayout = class'ServerExtMut'.default.SpawnedPerkUILayout;
+	MidGameMenuLayout = class'ServerExtMut'.default.MidGameMenuLayout;
+	PerkClasses = class'ServerExtMut'.default.PerkClasses;
+	ServerMOTD = class'ServerExtMut'.default.ServerMOTD;
+	StatFileDir = class'ServerExtMut'.default.StatFileDir;
+	AutoMessageIntervalSeconds = class'ServerExtMut'.default.AutoMessageIntervalSeconds;
+	bAutoMessageEnabled = class'ServerExtMut'.default.bAutoMessageEnabled;
+	AutoMessageText = class'ServerExtMut'.default.AutoMessageText;
+	AutoMessageColor = class'ServerExtMut'.default.AutoMessageColor;
+	AutoMessageTexts = class'ServerExtMut'.default.AutoMessageTexts;
+	`log("[SMLCompat] runtime settings synced from [ServerExtMut.ServerExtMut]");
+}
+
+final function ApplyZvampCompatibilityDefaults()
+{
+	class'Zvamp_Knife'.static.InitDefaults();
+	class'Zvamp_Syringe'.static.InitDefaults();
+	class'Zvamp_Camera'.static.InitDefaults();
+
+	if (bZvampCompatDefaultsApplied)
+		return;
+
+	if (class'Zvamp_Knife'.default.bEnabled)
+	{
+		ConsoleCommand("set KFWeap_Knife_Berserker MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Commando MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Demolitionist MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_FieldMedic MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Firebug MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Gunslinger MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Sharpshooter MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Support MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_Survivalist MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Knife_SWAT MovementSpeedMod "$class'Zvamp_Knife'.default.MovespeedMultiplier);
+		ConsoleCommand("set KFWeap_Edged_Knife ParryDamageMitigationPercent "$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+		ConsoleCommand("set KFWeap_Edged_Knife BlockDamageMitigation "$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+		`log("[SMLCompat] knife compatibility enabled: move="$class'Zvamp_Knife'.default.MovespeedMultiplier@"parryBlock="$class'Zvamp_Knife'.default.ParryBlockMultiplier);
+	}
+
+	if (class'Zvamp_Syringe'.default.bEnabled)
+	{
+		ConsoleCommand("set KFWeap_Healer_Syringe HealAmount "$class'Zvamp_Syringe'.default.OthersHealAmount);
+		ConsoleCommand("set KFWeap_Healer_Syringe HealRechargeTime "$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+		ConsoleCommand("set KFWeap_HealerBase HealAmount "$class'Zvamp_Syringe'.default.OthersHealAmount);
+		ConsoleCommand("set KFWeap_HealerBase HealRechargeTime "$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+		`log("[SMLCompat] syringe compatibility enabled: selfHeal="$class'Zvamp_Syringe'.default.StandAloneHealAmount@"otherHeal="$class'Zvamp_Syringe'.default.OthersHealAmount@"selfRecharge="$class'Zvamp_Syringe'.default.HealSelfRechargeSeconds@"otherRecharge="$class'Zvamp_Syringe'.default.HealOthersRechargeSeconds);
+	}
+
+	if (class'Zvamp_Camera'.default.bEnabled)
+	{
+		ConsoleCommand("set CameraActor bNoDelete false");
+		`log("[SMLCompat] camera compatibility enabled.");
+	}
+
+	bZvampCompatDefaultsApplied = true;
 }
 
 final function SetupGameClasses()
@@ -227,6 +316,7 @@ final function InitializePerks(ExtPlayerController Other)
 	}
 	PM.ServerInitPerks();
 	PM.InitiateClientRep();
+	PM.ForceZvampextReplicationUpdate();
 	SyncSMLPerkLevel(Other);
 	if (PM.ZvampextNeedsReplicationKick())
 		SetTimer(1.f, true, 'PerkReplicationWatchdog');
@@ -901,7 +991,7 @@ function AdminSetTraderGuard(ExtPlayerController PC, bool bEnabled, bool bBlockS
 function AdminProgressWave(ExtPlayerController PC, int WaveCount)
 {
 	local KFGameInfo KFGI;
-	local KFGameInfo_Endless EndlessGI;
+	local KFGameInfo_Survival SurvivalGI;
 	local KFGameReplicationInfo KFGRI;
 	local KFAISpawnManager SpawnManager;
 	local KFPawn_Monster Zed;
@@ -926,10 +1016,10 @@ function AdminProgressWave(ExtPlayerController PC, int WaveCount)
 		return;
 	}
 
-	EndlessGI = KFGameInfo_Endless(KFGI);
-	if (EndlessGI == None)
+	SurvivalGI = KFGameInfo_Survival(KFGI);
+	if (SurvivalGI == None)
 	{
-		PC.ClientMessage("ProgressWave failed: Endless game state unavailable.", 'Priority');
+		PC.ClientMessage("ProgressWave failed: Survival-style game state unavailable.", 'Priority');
 		return;
 	}
 	WaveCount = Clamp(WaveCount, 1, 100);
@@ -961,14 +1051,14 @@ function AdminProgressWave(ExtPlayerController PC, int WaveCount)
 		}
 	}
 
-	if (EndlessGI != None)
-		EndlessGI.WaveNum = TargetWave;
+	if (SurvivalGI != None)
+		SurvivalGI.WaveNum = TargetWave;
 	KFGRI.WaveNum = TargetWave;
 	KFGRI.AIRemaining = 0;
 	KFGRI.bForceNetUpdate = true;
 
 	ReleaseSMLTraderPause();
-	EndlessGI.WaveEnded(WEC_WaveWon);
+	SurvivalGI.WaveEnded(WEC_WaveWon);
 	`log("[Zvamp] ProgressWave advanced from "$OldWave$" to "$NewWave$"; damaged="$Damaged@"removed="$Removed);
 	PC.ClientMessage("ProgressWave advanced from "$OldWave$" to "$NewWave$" and opened trader through wave-end flow. Removed "$Removed$" leftover zeds.", 'Priority');
 }
@@ -1562,7 +1652,7 @@ function MissingZedWaveGuard()
 
 function ClearOrphanedWaveCounter(KFGameInfo KFGI, KFGameReplicationInfo KFGRI, string Source, int QueuedZedWork, optional float GraceSeconds)
 {
-	local KFGameInfo_Endless EndlessGI;
+	local KFGameInfo_Survival SurvivalGI;
 
 	if (KFGI == None || KFGRI == None)
 		return;
@@ -1579,9 +1669,36 @@ function ClearOrphanedWaveCounter(KFGameInfo KFGI, KFGameReplicationInfo KFGRI, 
 	KFGRI.AIRemaining = 0;
 	KFGRI.bForceNetUpdate = true;
 	SMLNoLiveZedSince = 0.f;
-	EndlessGI = KFGameInfo_Endless(KFGI);
-	if (EndlessGI != None)
-		EndlessGI.CheckWaveEnd();
+	SurvivalGI = KFGameInfo_Survival(KFGI);
+	if (SurvivalGI != None)
+		SurvivalGI.CheckWaveEnd();
+}
+
+final function HoldSMLTraderTimer(string Source)
+{
+	local KFGameInfo KFGI;
+	local KFGameReplicationInfo KFGRI;
+
+	KFGI = KFGameInfo(WorldInfo.Game);
+	KFGRI = KFGameReplicationInfo(WorldInfo.GRI);
+	if (KFGRI == None || !KFGRI.bTraderIsOpen)
+		return;
+
+	if (!bSMLTraderAutoPaused)
+	{
+		bSMLTraderAutoPaused = true;
+		SMLTraderPausedRemainingTime = Max(KFGRI.RemainingTime, 1);
+		`log("[SMLCompat] trader auto-hold enabled by "$Source$".");
+	}
+	KFGRI.bStopCountDown = true;
+	KFGRI.RemainingTime = Max(SMLTraderPausedRemainingTime, 1);
+	KFGRI.bForceNetUpdate = true;
+	if (KFGI != None && !bSMLTraderCloseTimerCleared)
+	{
+		KFGI.ClearTimer('CloseTraderTimer');
+		bSMLTraderCloseTimerCleared = true;
+		`log("[SMLCompat] trader close timer cleared on GameInfo by "$Source$".");
+	}
 }
 
 function ReleaseSMLTraderPause()
@@ -1595,6 +1712,8 @@ function ReleaseSMLTraderPause()
 		KFGRI.bForceNetUpdate = true;
 	}
 	bSMLTraderAutoPaused = false;
+	bSMLTraderCloseTimerCleared = false;
+	SMLTraderPausedRemainingTime = 0;
 }
 
 function MaintainSMLTraderFeatures()
@@ -1619,21 +1738,14 @@ function MaintainSMLTraderFeatures()
 		foreach WorldInfo.AllControllers(class'ExtPlayerController', ExtPC)
 			CheckSMLPerkChange(ExtPC);
 
-		if (bZvampextAutoPauseTrader)
-		{
-			KFGRI.bStopCountDown = true;
-			KFGRI.bForceNetUpdate = true;
-			if (!bSMLTraderAutoPaused)
-			{
-				bSMLTraderAutoPaused = true;
-				`log("[SMLCompat] trader auto-hold enabled.");
-			}
-		}
+		if (bZvampextAutoPauseTrader || bSMLTraderAutoPaused)
+			HoldSMLTraderTimer("mutator monitor");
 		ApplySMLTraderSpeedBoost();
 	}
 	else
 	{
 		bSMLTraderAutoPaused = false;
+		bSMLTraderCloseTimerCleared = false;
 		ClearSMLTraderSpeedBoost();
 	}
 }
@@ -1960,8 +2072,7 @@ function AdminRevampAction(ExtPlayerController PC, int Action)
 			PC.ClientMessage("Trader is not open.", 'Priority');
 			break;
 		}
-		KFGRI.bStopCountDown = true;
-		KFGRI.bForceNetUpdate = true;
+		HoldSMLTraderTimer("admin pause");
 		PC.ClientMessage("Trader timer paused. Players can still vote/skip trader normally.", 'Priority');
 		break;
 	default:

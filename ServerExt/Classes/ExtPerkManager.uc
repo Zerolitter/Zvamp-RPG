@@ -201,13 +201,13 @@ simulated function InitPerks()
 
 	if (WorldInfo.NetMode==NM_Client)
 	{
+		PC = PlayerController(Owner);
 		foreach DynamicActors(class'Ext_PerkBase',P)
-			if (P.PerkManager!=Self)
+			if (ShouldRegisterClientPerk(P,PC))
 				RegisterPerk(P);
 
 		if (CurrentPerk==None)
 		{
-			PC = PlayerController(Owner);
 			if (PC!=None)
 			{
 				EPRI = ExtPlayerReplicationInfo(PC.PlayerReplicationInfo);
@@ -245,6 +245,19 @@ simulated function InitPerks()
 			PRIOwner.PerkManager = Self;
 		}
 	}
+}
+
+simulated final function bool ShouldRegisterClientPerk(Ext_PerkBase P, PlayerController PC)
+{
+	if (P==None)
+		return false;
+	if (P.PerkManager==Self)
+		return true;
+	if (P.PerkManager!=None && P.PerkManager!=Self)
+		return false;
+	if (PC==None)
+		return false;
+	return (P.Owner==PC || P.PlayerOwner==PC || P.Owner==Owner || P.PlayerOwner==Owner);
 }
 
 function CheckPlayTime()
@@ -486,10 +499,44 @@ function PreNotifyPlayerLeave()
 // Call this once the stats has been properly loaded serverside!
 function InitiateClientRep()
 {
+	ResetIncompletePerkReplication();
 	RepState = 0;
 	RepIndex = 0;
 	LastZvampextRepKickTime = WorldInfo.RealTimeSeconds;
+	ForceZvampextReplicationUpdate();
 	SetTimer(0.01,true,'ReplicateTimer');
+}
+
+final function ResetIncompletePerkReplication()
+{
+	local int i;
+
+	if (WorldInfo.NetMode==NM_Client)
+		return;
+	for (i=0; i<UserPerks.Length; ++i)
+		if (UserPerks[i]!=None && !IsPerkReplicationComplete(UserPerks[i]))
+			UserPerks[i].RestartZvampextClientReplication(!UserPerks[i].bClientAuthorized);
+}
+
+final function bool IsPerkReplicationComplete(Ext_PerkBase P)
+{
+	return (P!=None && P.bClientAuthorized && P.bPerkNetReady && P.PerkStats.Length>0 && P.PerkTraits.Length>0);
+}
+
+final function ForceZvampextReplicationUpdate()
+{
+	local ExtPlayerController EPC;
+
+	bForceNetUpdate = true;
+	if (CurrentPerk!=None)
+		CurrentPerk.bForceNetUpdate = true;
+	if (PRIOwner!=None)
+		PRIOwner.bForceNetUpdate = true;
+	EPC = ExtPlayerController(PlayerOwner);
+	if (EPC==None)
+		EPC = ExtPlayerController(Owner);
+	if (EPC!=None)
+		EPC.bForceNetUpdate = true;
 }
 
 function bool ZvampextNeedsReplicationKick()
@@ -502,7 +549,7 @@ function bool ZvampextNeedsReplicationKick()
 		return true;
 	for (i=0; i<UserPerks.Length; ++i)
 	{
-		if (UserPerks[i]==None || !UserPerks[i].bClientAuthorized || !UserPerks[i].bPerkNetReady)
+		if (!IsPerkReplicationComplete(UserPerks[i]))
 			return true;
 	}
 	return false;
